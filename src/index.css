@@ -1,0 +1,60 @@
+@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Manrope:wght@400;500;700;800&display=swap');
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-headline: "Manrope", sans-serif;
+
+  /* Refined Light Palette - Light Gray Background */
+  --color-primary: #00C2FF; /* Cyan Accent */
+  --color-primary-container: #E0F7FF;
+  
+  --color-secondary: #5856D6; /* Purple Accent */
+  --color-secondary-container: #F2F2F7;
+  
+  --color-surface: #F2F2F7; /* Light Gray Background */
+  --color-surface-container: #FFFFFF; /* White containers for contrast */
+  --color-surface-container-low: #F8F9FA;
+  --color-surface-container-lowest: #FFFFFF;
+  --color-surface-container-high: #EBEBEB;
+  --color-surface-container-highest: #D1D1D6;
+  
+  --color-on-surface: #1C1C1E;
+  --color-on-surface-variant: #636366;
+  --color-on-primary-container: #004080;
+  --color-on-secondary-container: #1C1C1E;
+  --color-on-secondary-fixed: #FFFFFF;
+  
+  --color-outline-variant: #E5E5EA;
+
+  --radius-xl: 1rem;
+  --radius-2xl: 1.5rem;
+  --radius-3xl: 2rem;
+}
+
+@layer base {
+  body {
+    @apply bg-surface text-on-surface font-sans antialiased selection:bg-primary/30;
+  }
+}
+
+.glass-panel {
+  @apply bg-surface/60 backdrop-blur-xl border border-white/5;
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+@keyframes pulse-ring {
+  0% { transform: scale(0.8); opacity: 0.5; }
+  100% { transform: scale(1.5); opacity: 0; }
+}
+
+.animate-pulse-ring {
+  animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
