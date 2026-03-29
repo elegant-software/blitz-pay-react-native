@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(.specify/scripts/bash/create-new-feature.sh \"I want to have log in screen with signup option, face Id recognotion also will be possible, I would like to use Keycloak SKD and same styling and ux with this app should be followed\" --json --short-name \"keycloak-auth-login\" \"Keycloak Auth Login\")",
+      "Bash(.specify/scripts/bash/setup-plan.sh --json)",
+      "WebSearch",
+      "Bash(.specify/scripts/bash/update-agent-context.sh claude:*)",
+      "Bash(.specify/scripts/bash/check-prerequisites.sh --json)",
+      "Bash(.specify/scripts/bash/check-prerequisites.sh --json --require-tasks --include-tasks 2>&1)",
+      "Bash(ls /Users/mehdi/MyProject/blitzpay-prototype/*.ts)",
+      "Bash(ls /Users/mehdi/MyProject/blitzpay-prototype/src/server*)",
+      "Bash(npm run:*)",
+      "Bash(sed -i '' \"s|from ''../lib/keycloak''|from ''../lib/keycloak''|g\" /Users/mehdi/MyProject/blitzpay-prototype/src/screens/Login.tsx)",
+      "Bash(sed -i '' \"s|from ''./lib/keycloak''|from ''./lib/keycloak''|g\" /Users/mehdi/MyProject/blitzpay-prototype/src/App.tsx)",
+      "Bash(sed -i '' \"s|from ''./lib/keycloak''|from ''./lib/keycloak''|g\" /Users/mehdi/MyProject/blitzpay-prototype/src/main.tsx)"
+    ]
+  }
+}

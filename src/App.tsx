@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useAuth } from './lib/keycloak';
 import { Screen } from './types';
 import BottomNav from './components/BottomNav';
 import Header from './components/Header';
@@ -17,18 +18,41 @@ import ShakeReward from './components/ShakeReward';
 import TrueLayerPayment from './components/TrueLayerPayment';
 import FloatingAvatar from './components/FloatingAvatar';
 import SplashScreen from './components/SplashScreen';
+import Login from './screens/Login';
+import Signup from './screens/Signup';
 import { AnimatePresence, motion } from 'motion/react';
 
 export default function App() {
+  const { initialized: keycloakReady, authenticated, isWebAuthnAvailable, biometricEnrolled, enrollBiometric } = useAuth();
   const [currentScreen, setCurrentScreen] = useState<Screen>('explore');
   const [invoiceToPay, setInvoiceToPay] = useState<string | null>(null);
   const [showShakeReward, setShowShakeReward] = useState(false);
   const [isAppReady, setIsAppReady] = useState(false);
+  const [sessionExpiredMsg, setSessionExpiredMsg] = useState(false);
+  const [showBiometricPrompt, setShowBiometricPrompt] = useState(false);
 
   // Expose navigation to invoices globally for the quick action tile
   useEffect(() => {
     (window as any).navigateToInvoices = () => setCurrentScreen('invoices');
   }, []);
+
+  // After first login, offer biometric enrollment if available and not yet enrolled
+  useEffect(() => {
+    if (authenticated && isWebAuthnAvailable && !biometricEnrolled) {
+      const dismissed = localStorage.getItem('blitzpay_biometric_dismissed');
+      if (!dismissed) setShowBiometricPrompt(true);
+    }
+  }, [authenticated, isWebAuthnAvailable, biometricEnrolled]);
+
+  // Auth gate: redirect to login when app+keycloak are both ready but user is unauthenticated.
+  // Also handles session expiry (authenticated transitions from true → false).
+  useEffect(() => {
+    if (isAppReady && keycloakReady && !authenticated &&
+        currentScreen !== 'login' && currentScreen !== 'signup') {
+      setCurrentScreen('login');
+      setSessionExpiredMsg(true);
+    }
+  }, [isAppReady, keycloakReady, authenticated]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handlePaymentSuccess = () => {
     setShowShakeReward(true);
@@ -36,6 +60,21 @@ export default function App() {
 
   const renderScreen = () => {
     switch (currentScreen) {
+      case 'login':
+        return (
+          <Login
+            onLoginSuccess={() => { setSessionExpiredMsg(false); setCurrentScreen('explore'); }}
+            onNavigateToSignup={() => setCurrentScreen('signup')}
+            sessionExpired={sessionExpiredMsg}
+          />
+        );
+      case 'signup':
+        return (
+          <Signup
+            onSignupSuccess={() => setCurrentScreen('explore')}
+            onNavigateToLogin={() => setCurrentScreen('login')}
+          />
+        );
       case 'explore':
         return (
           <Explore
@@ -102,9 +141,9 @@ export default function App() {
     }
   };
 
-  const showHeader = !['assistant', 'merchant', 'checkout', 'my-qr', 'scan-qr', 'invoices', 'notifications', 'send-invoice'].includes(currentScreen);
-  const showBottomNav = !['checkout', 'my-qr', 'scan-qr', 'invoices', 'notifications', 'send-invoice'].includes(currentScreen);
-  const showFloatingAvatar = !['assistant', 'checkout', 'my-qr', 'scan-qr', 'invoices', 'notifications', 'send-invoice'].includes(currentScreen);
+  const showHeader = !['login', 'signup', 'assistant', 'merchant', 'checkout', 'my-qr', 'scan-qr', 'invoices', 'notifications', 'send-invoice'].includes(currentScreen);
+  const showBottomNav = !['login', 'signup', 'checkout', 'my-qr', 'scan-qr', 'invoices', 'notifications', 'send-invoice'].includes(currentScreen);
+  const showFloatingAvatar = !['login', 'signup', 'assistant', 'checkout', 'my-qr', 'scan-qr', 'invoices', 'notifications', 'send-invoice'].includes(currentScreen);
 
   return (
     <div className="min-h-screen bg-surface flex flex-col relative overflow-hidden">
@@ -125,7 +164,7 @@ export default function App() {
         {showHeader && (
           <Header onNavigateToNotifications={() => setCurrentScreen('notifications')} />
         )}
-        
+
         <div className="flex-1 overflow-y-auto hide-scrollbar">
           <AnimatePresence mode="wait">
             <motion.div
@@ -139,6 +178,36 @@ export default function App() {
             </motion.div>
           </AnimatePresence>
         </div>
+
+        {/* Face ID enrollment prompt (shown after first login on capable devices) */}
+        <AnimatePresence>
+          {showBiometricPrompt && (
+            <motion.div
+              initial={{ opacity: 0, y: 40 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 40 }}
+              transition={{ duration: 0.3 }}
+              className="fixed bottom-24 left-4 right-4 z-50 bg-surface-container rounded-2xl p-4 shadow-lg border border-outline-variant"
+            >
+              <p className="font-headline font-bold text-sm text-on-surface mb-1">Enable Face ID</p>
+              <p className="text-xs text-on-surface-variant mb-3">Log in faster with biometric authentication.</p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { setShowBiometricPrompt(false); enrollBiometric(); }}
+                  className="flex-1 bg-primary text-white text-sm font-semibold py-2 rounded-xl"
+                >
+                  Enable
+                </button>
+                <button
+                  onClick={() => { setShowBiometricPrompt(false); localStorage.setItem('blitzpay_biometric_dismissed', '1'); }}
+                  className="flex-1 bg-surface-container-high text-on-surface-variant text-sm font-semibold py-2 rounded-xl"
+                >
+                  Not now
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         <FloatingAvatar isVisible={showFloatingAvatar} />
 

@@ -8,15 +8,16 @@ import {
   Shield, 
   Smartphone,
   CheckCircle2,
-  AlertCircle,
   Languages
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useState } from 'react';
 import { useLanguage } from '../lib/LanguageContext';
+import { useAuth } from '../lib/keycloak';
 
 export default function Account() {
   const { language, setLanguage, t } = useLanguage();
+  const { logout } = useAuth();
   const [showPinModal, setShowPinModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showLanguageModal, setShowLanguageModal] = useState(false);
@@ -156,7 +157,10 @@ export default function Account() {
       </div>
 
       {/* Logout */}
-      <button className="w-full flex items-center justify-center gap-2 p-4 text-destructive font-bold hover:bg-destructive/5 rounded-2xl transition-all border border-outline-variant">
+      <button
+        onClick={logout}
+        className="w-full flex items-center justify-center gap-2 p-4 text-destructive font-bold hover:bg-destructive/5 rounded-2xl transition-all border border-outline-variant"
+      >
         <LogOut className="w-5 h-5" />
         {t('logout')}
       </button>
