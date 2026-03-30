@@ -1,4 +1,4 @@
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, useMotionValue } from 'motion/react';
 import { Maximize2, Minimize2, GripVertical, MicOff, Mic, AudioLines } from 'lucide-react';
 import { useState } from 'react';
 
@@ -6,7 +6,16 @@ interface FloatingAvatarProps {
   isVisible: boolean;
 }
 
+const DRAG_CONSTRAINTS = {
+  top: -400,
+  bottom: 400,
+  left: -320,
+  right: 320,
+};
+
 export default function FloatingAvatar({ isVisible }: FloatingAvatarProps) {
+  const dragX = useMotionValue(0);
+  const dragY = useMotionValue(0);
   const [isLarge, setIsLarge] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
 
@@ -16,6 +25,9 @@ export default function FloatingAvatar({ isVisible }: FloatingAvatarProps) {
     <motion.div
       drag
       dragMomentum={false}
+      dragElastic={0.2}
+      dragConstraints={DRAG_CONSTRAINTS}
+      style={{ x: dragX, y: dragY }}
       initial={{ opacity: 0, scale: 0.5 }}
       animate={{ opacity: 1, scale: 1 }}
       className="fixed bottom-24 left-6 z-[100] touch-none"

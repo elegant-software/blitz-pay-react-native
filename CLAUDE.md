@@ -40,7 +40,6 @@ npm run clean     # Remove dist directory
 ## Environment Variables
 
 ```
-GEMINI_API_KEY=   # Google AI API key (exposed to browser via Vite)
 APP_URL=          # Cloud Run service URL
 DISABLE_HMR=true  # Set in AI Studio environment only
 ```
@@ -89,5 +88,36 @@ See `specs/001-keycloak-auth-login/quickstart.md` for Keycloak server setup step
 
 Merchant, invoice, and product data are hardcoded/mocked in components. The TrueLayer payment component is UI-only. No test suite is configured.
 
+## Mobile App (React Native / Expo)
+
+The `/mobile` directory contains the React Native POC — a parallel project, the web prototype at root is untouched.
+
+### Mobile Commands
+```bash
+cd mobile
+cp .env.example .env   # fill in Keycloak values (or set EXPO_PUBLIC_AUTH_BYPASS=true)
+npm install
+npm run ios            # iOS Simulator
+npm run android        # Android Emulator
+npm run start          # Expo Go / Dev Client
+```
+
+### Mobile Architecture
+- **Framework**: Expo SDK 52, React Native 0.76
+- **Navigation**: React Navigation v6 — `NativeStackNavigator` (auth + detail screens) + `BottomTabNavigator` (4 main tabs)
+- **Auth**: Keycloak ROPC via native `fetch`; tokens in `expo-secure-store`; biometric via `expo-local-authentication` (unlocks stored refresh token)
+- **QR scanning**: `expo-camera` `CameraView` with `onBarcodeScanned`
+- **QR display**: `react-native-qrcode-svg`
+- **i18n**: same translation keys as web — `useLanguage()` from `src/lib/LanguageContext.tsx`
+- **Design tokens**: `src/lib/theme.ts` — same brand colours (primary #00C2FF, secondary #5856D6)
+- **Env vars**: `EXPO_PUBLIC_*` prefix (Vite's `VITE_*` → `EXPO_PUBLIC_*`)
+
+### Mobile Screen inventory
+All 13 screens from the web prototype are present in `mobile/src/screens/`.
+
+### Auth bypass for demos
+Set `EXPO_PUBLIC_AUTH_BYPASS=true` in `mobile/.env` to skip Keycloak entirely.
+
 ## Recent Changes
-- 001-keycloak-auth-login: Added [if applicable, e.g., PostgreSQL, CoreData, files or N/A]
+- 001-keycloak-auth-login: Added Keycloak ROPC auth, biometric enrollment, Express /api/register proxy
+- 002-react-native-migration: Added `/mobile` Expo app with all 13 screens, React Navigation, native auth, QR scanner/display, EN/DE i18n

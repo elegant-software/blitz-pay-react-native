@@ -1,0 +1,328 @@
+import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Modal,
+  Alert,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import { useLanguage } from '../lib/LanguageContext';
+import { useAuth } from '../lib/auth';
+import { colors, spacing, radius, shadow } from '../lib/theme';
+import type { Language } from '../lib/translations';
+
+export default function AccountScreen() {
+  const { t, language, setLanguage } = useLanguage();
+  const { user, logout, isBiometricAvailable, biometricEnrolled, enrollBiometric } = useAuth();
+  const insets = useSafeAreaInsets();
+
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [biometricEnabled, setBiometricEnabled] = useState(biometricEnrolled);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
+
+  const handleBiometricToggle = async (value: boolean) => {
+    setBiometricEnabled(value);
+    if (value) {
+      await enrollBiometric();
+    }
+  };
+
+  const handleLogout = async () => {
+    setShowLogoutModal(false);
+    await logout();
+  };
+
+  const settingsSections = [
+    {
+      title: t('security'),
+      rows: [
+        {
+          icon: 'key-outline',
+          label: 'Change PIN',
+          onPress: () => {},
+          showArrow: true,
+        },
+        ...(isBiometricAvailable
+          ? [
+              {
+                icon: 'finger-print',
+                label: t('enable_face_id'),
+                onPress: () => {},
+                showArrow: false,
+                right: (
+                  <Switch
+                    value={biometricEnabled}
+                    onValueChange={handleBiometricToggle}
+                    trackColor={{ false: colors.gray300, true: colors.primary }}
+                    thumbColor={colors.white}
+                  />
+                ),
+              },
+            ]
+          : []),
+      ],
+    },
+    {
+      title: t('settings'),
+      rows: [
+        {
+          icon: 'language-outline',
+          label: t('language'),
+          onPress: () => {},
+          showArrow: false,
+          right: (
+            <View style={styles.languageToggle}>
+              {(['de', 'en'] as Language[]).map((lang) => (
+                <TouchableOpacity
+                  key={lang}
+                  style={[styles.langBtn, language === lang && styles.langBtnActive]}
+                  onPress={() => setLanguage(lang)}
+                >
+                  <Text style={[styles.langText, language === lang && styles.langTextActive]}>
+                    {lang.toUpperCase()}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ),
+        },
+        {
+          icon: 'notifications-outline',
+          label: t('notifications'),
+          onPress: () => {},
+          showArrow: false,
+          right: (
+            <Switch
+              value={notificationsEnabled}
+              onValueChange={setNotificationsEnabled}
+              trackColor={{ false: colors.gray300, true: colors.primary }}
+              thumbColor={colors.white}
+            />
+          ),
+        },
+      ],
+    },
+    {
+      title: t('help_support'),
+      rows: [
+        { icon: 'help-circle-outline', label: t('help_support'), onPress: () => {}, showArrow: true },
+      ],
+    },
+  ];
+
+  return (
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      <ScrollView contentContainerStyle={{ paddingBottom: 90 + insets.bottom }} showsVerticalScrollIndicator={false}>
+        {/* Profile */}
+        <View style={styles.profileSection}>
+          <View style={styles.avatarLarge}>
+            <Text style={styles.avatarText}>{user?.name?.charAt(0).toUpperCase() ?? 'U'}</Text>
+            <TouchableOpacity style={styles.editAvatarBtn}>
+              <Ionicons name="camera" size={12} color={colors.white} />
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.profileName}>{user?.name ?? 'User'}</Text>
+          <Text style={styles.profileEmail}>{user?.email ?? ''}</Text>
+          <View style={styles.profileBadge}>
+            <Ionicons name="checkmark-circle" size={12} color={colors.primary} />
+            <Text style={styles.profileBadgeText}>{t('blitz_verified')}</Text>
+          </View>
+        </View>
+
+        {/* Settings sections */}
+        {settingsSections.map((section) => (
+          <View key={section.title} style={styles.section}>
+            <Text style={styles.sectionTitle}>{section.title}</Text>
+            <View style={styles.sectionCard}>
+              {section.rows.map((row, idx) => (
+                <TouchableOpacity
+                  key={row.label}
+                  style={[styles.settingRow, idx > 0 && styles.settingRowBorder]}
+                  onPress={row.onPress}
+                  activeOpacity={row.showArrow ? 0.7 : 1}
+                >
+                  <View style={styles.settingLeft}>
+                    <View style={styles.settingIconBox}>
+                      <Ionicons name={row.icon as React.ComponentProps<typeof Ionicons>['name']} size={18} color={colors.secondary} />
+                    </View>
+                    <Text style={styles.settingLabel}>{row.label}</Text>
+                  </View>
+                  {row.right ?? (row.showArrow && (
+                    <Ionicons name="chevron-forward" size={16} color={colors.gray400} />
+                  ))}
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        ))}
+
+        {/* Logout */}
+        <View style={styles.section}>
+          <TouchableOpacity style={styles.logoutBtn} onPress={() => setShowLogoutModal(true)} activeOpacity={0.8}>
+            <Ionicons name="log-out-outline" size={18} color={colors.error} />
+            <Text style={styles.logoutText}>{t('logout')}</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+
+      {/* Logout confirmation modal */}
+      <Modal visible={showLogoutModal} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>{t('logout')}</Text>
+            <Text style={styles.modalDesc}>Are you sure you want to sign out?</Text>
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.modalCancel}
+                onPress={() => setShowLogoutModal(false)}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.modalConfirm} onPress={handleLogout}>
+                <Text style={styles.modalConfirmText}>{t('logout')}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background },
+  profileSection: {
+    alignItems: 'center',
+    paddingVertical: spacing.xl,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.gray200,
+  },
+  avatarLarge: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  avatarText: { fontSize: 32, fontWeight: '700', color: colors.black },
+  editAvatarBtn: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: colors.onSurface,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  profileName: { fontSize: 20, fontWeight: '700', color: colors.onSurface },
+  profileEmail: { fontSize: 14, color: colors.gray600, marginTop: 2 },
+  profileBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 6,
+    backgroundColor: `${colors.primary}15`,
+    borderRadius: radius.full,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+  },
+  profileBadgeText: { fontSize: 12, color: colors.primary, fontWeight: '600' },
+  section: { paddingHorizontal: spacing.md, marginTop: spacing.md },
+  sectionTitle: { fontSize: 13, fontWeight: '600', color: colors.gray600, marginBottom: 8, paddingLeft: 4 },
+  sectionCard: {
+    backgroundColor: colors.background,
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    borderColor: colors.gray200,
+    overflow: 'hidden',
+    ...shadow.sm,
+  },
+  settingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: spacing.md,
+  },
+  settingRowBorder: {
+    borderTopWidth: 1,
+    borderTopColor: colors.gray200,
+  },
+  settingLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flex: 1 },
+  settingIconBox: {
+    width: 32,
+    height: 32,
+    borderRadius: radius.sm,
+    backgroundColor: `${colors.secondary}10`,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  settingLabel: { fontSize: 15, color: colors.onSurface },
+  languageToggle: {
+    flexDirection: 'row',
+    backgroundColor: colors.surface,
+    borderRadius: radius.full,
+    padding: 2,
+  },
+  langBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: radius.full,
+  },
+  langBtnActive: { backgroundColor: colors.primary },
+  langText: { fontSize: 12, fontWeight: '700', color: colors.gray600 },
+  langTextActive: { color: colors.black },
+  logoutBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: `${colors.error}10`,
+    borderRadius: radius.xl,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: `${colors.error}20`,
+  },
+  logoutText: { fontSize: 15, fontWeight: '600', color: colors.error },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: colors.overlayDark,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  modalCard: {
+    backgroundColor: colors.background,
+    borderRadius: radius.xxl,
+    padding: spacing.xl,
+    width: '100%',
+  },
+  modalTitle: { fontSize: 18, fontWeight: '700', color: colors.onSurface, marginBottom: 8 },
+  modalDesc: { fontSize: 14, color: colors.gray600, marginBottom: spacing.lg },
+  modalActions: { flexDirection: 'row', gap: spacing.sm },
+  modalCancel: {
+    flex: 1,
+    padding: spacing.md,
+    borderRadius: radius.full,
+    borderWidth: 1.5,
+    borderColor: colors.gray300,
+    alignItems: 'center',
+  },
+  modalCancelText: { fontSize: 15, fontWeight: '600', color: colors.onSurface },
+  modalConfirm: {
+    flex: 1,
+    padding: spacing.md,
+    borderRadius: radius.full,
+    backgroundColor: colors.error,
+    alignItems: 'center',
+  },
+  modalConfirmText: { fontSize: 15, fontWeight: '600', color: colors.white },
+});
