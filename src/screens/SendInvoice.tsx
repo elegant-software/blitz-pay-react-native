@@ -43,7 +43,6 @@ const GROUPS: Group[] = [
 export default function SendInvoice({ onBack, onSent }: SendInvoiceProps) {
   const { t } = useLanguage();
   const [step, setStep] = useState<'contact' | 'details'>('contact');
-  const [selectedContacts, setSelectedContacts] = useState<Contact[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   
   const [items, setItems] = useState<InvoiceItem[]>([
@@ -52,11 +51,36 @@ export default function SendInvoice({ onBack, onSent }: SendInvoiceProps) {
   
   const [isSending, setIsSending] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [selectedContactIds, setSelectedContactIds] = useState<string[]>([]);
+  const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
 
   const filteredContacts = CONTACTS.filter(c => 
     c.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
     c.handle.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const selectedGroupMemberIds = useMemo(() => {
+    const ids = new Set<string>();
+    selectedGroupIds.forEach((groupId) => {
+      const group = GROUPS.find((g) => g.id === groupId);
+      group?.memberIds.forEach((memberId) => ids.add(memberId));
+    });
+    return ids;
+  }, [selectedGroupIds]);
+
+  const selectedRecipients = useMemo(() => {
+    const ids = new Set<string>(selectedContactIds);
+    selectedGroupMemberIds.forEach((memberId) => ids.add(memberId));
+    return CONTACTS.filter((contact) => ids.has(contact.id));
+  }, [selectedContactIds, selectedGroupMemberIds]);
+
+  const selectedGroups = useMemo(
+    () => GROUPS.filter((group) => selectedGroupIds.includes(group.id)),
+    [selectedGroupIds]
+  );
+
+  const isContactSelected = (contact: Contact) =>
+    selectedContactIds.includes(contact.id) || selectedGroupMemberIds.has(contact.id);
 
   const totalAmount = useMemo(() => {
     return items.reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0);
@@ -76,28 +100,19 @@ export default function SendInvoice({ onBack, onSent }: SendInvoiceProps) {
   };
 
   const toggleContact = (contact: Contact) => {
-    setSelectedContacts(prev => 
-      prev.find(c => c.id === contact.id)
-        ? prev.filter(c => c.id !== contact.id)
-        : [...prev, contact]
+    setSelectedContactIds((prev) =>
+      prev.includes(contact.id) ? prev.filter((id) => id !== contact.id) : [...prev, contact.id]
     );
   };
 
-  const selectGroup = (group: Group) => {
-    const groupMembers = CONTACTS.filter(c => group.memberIds.includes(c.id));
-    setSelectedContacts(prev => {
-      const newContacts = [...prev];
-      groupMembers.forEach(member => {
-        if (!newContacts.find(c => c.id === member.id)) {
-          newContacts.push(member);
-        }
-      });
-      return newContacts;
-    });
+  const toggleGroup = (group: Group) => {
+    setSelectedGroupIds((prev) =>
+      prev.includes(group.id) ? prev.filter((id) => id !== group.id) : [...prev, group.id]
+    );
   };
 
   const handleSend = () => {
-    if (selectedContacts.length === 0 || items.some(i => !i.description || !i.amount)) return;
+    if (selectedRecipients.length === 0 || items.some(i => !i.description || !i.amount)) return;
     
     setIsSending(true);
     setTimeout(() => {
@@ -147,7 +162,7 @@ export default function SendInvoice({ onBack, onSent }: SendInvoiceProps) {
               <p className="text-on-surface-variant/60 max-w-xs">
                 {t('invoice_sent_msg', { 
                   amount: `€${totalAmount.toFixed(2)}`, 
-                  count: selectedContacts.length 
+                  count: selectedRecipients.length 
                 })}
               </p>
             </motion.div>
@@ -174,29 +189,38 @@ export default function SendInvoice({ onBack, onSent }: SendInvoiceProps) {
               <div className="space-y-3">
                 <h3 className="text-xs font-bold uppercase tracking-widest text-on-surface-variant/60 px-1">Groups</h3>
                 <div className="grid grid-cols-2 gap-3">
-                  {GROUPS.map(group => (
-                    <motion.button
-                      key={group.id}
-                      whileTap={{ scale: 0.98 }}
-                      onClick={() => selectGroup(group)}
-                      className="flex items-center gap-3 p-4 bg-surface-container rounded-2xl border border-outline-variant hover:border-primary/20 transition-all text-left"
-                    >
-                      <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center text-primary">
-                        <group.icon className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <p className="font-bold text-sm text-on-surface">{group.name}</p>
-                        <p className="text-[10px] text-on-surface-variant/60">{group.memberIds.length} {t('members')}</p>
-                      </div>
-                    </motion.button>
-                  ))}
+                  {GROUPS.map(group => {
+                    const groupIsSelected = selectedGroupIds.includes(group.id);
+                    return (
+                      <motion.button
+                        key={group.id}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={() => toggleGroup(group)}
+                        className={`flex items-center gap-3 p-4 rounded-2xl border transition-all text-left ${
+                          groupIsSelected
+                            ? 'border-primary bg-primary/10 text-primary'
+                            : 'border-outline-variant hover:border-primary/20 bg-surface-container text-on-surface'
+                        }`}
+                      >
+                        <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center text-primary">
+                          <group.icon className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <p className={`font-bold text-sm ${groupIsSelected ? 'text-primary' : 'text-on-surface'}`}>{group.name}</p>
+                          <p className={`text-[10px] ${groupIsSelected ? 'text-primary/70' : 'text-on-surface-variant/60'}`}>
+                            {group.memberIds.length} {t('members')}
+                          </p>
+                        </div>
+                      </motion.button>
+                    );
+                  })}
                 </div>
               </div>
 
               <div className="space-y-3">
                 <h3 className="text-xs font-bold uppercase tracking-widest text-on-surface-variant/60 px-1">{t('contacts')}</h3>
                 {filteredContacts.map(contact => {
-                  const isSelected = selectedContacts.find(c => c.id === contact.id);
+                  const isSelected = isContactSelected(contact);
                   return (
                     <motion.button
                       key={contact.id}
@@ -226,7 +250,7 @@ export default function SendInvoice({ onBack, onSent }: SendInvoiceProps) {
                 })}
               </div>
 
-              {selectedContacts.length > 0 && (
+              {selectedRecipients.length > 0 && (
                 <motion.button
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -234,7 +258,7 @@ export default function SendInvoice({ onBack, onSent }: SendInvoiceProps) {
                   onClick={() => setStep('details')}
                   className="w-full h-16 rounded-full bg-primary text-white font-headline font-bold text-lg flex items-center justify-center gap-3 shadow-lg shadow-primary/20 sticky bottom-4"
                 >
-                  {t('continue_with', { count: selectedContacts.length })}
+                  {t('continue_with', { count: selectedRecipients.length })}
                   <ChevronRight className="w-5 h-5" />
                 </motion.button>
               )}
@@ -251,7 +275,17 @@ export default function SendInvoice({ onBack, onSent }: SendInvoiceProps) {
               <div className="space-y-3">
                 <h3 className="text-xs font-bold uppercase tracking-widest text-on-surface-variant/60 px-1">{t('recipients')}</h3>
                 <div className="flex flex-wrap gap-2">
-                  {selectedContacts.map(contact => (
+                  {selectedGroups.map(group => (
+                    <span
+                      key={group.id}
+                      className="flex items-center gap-2 px-3 py-2 bg-primary/10 rounded-full border border-primary/30 text-xs font-semibold text-primary"
+                    >
+                      <group.icon className="w-4 h-4" />
+                      <span>{group.name}</span>
+                      <span className="text-[10px] text-primary/70">{group.memberIds.length} {t('members')}</span>
+                    </span>
+                  ))}
+                  {selectedRecipients.map(contact => (
                     <div key={contact.id} className="flex items-center gap-2 p-2 bg-primary/5 rounded-full border border-primary/10">
                       <img src={contact.avatar} alt={contact.name} className="w-6 h-6 rounded-full" referrerPolicy="no-referrer" />
                       <span className="text-xs font-bold text-on-surface pr-1">{contact.name}</span>
@@ -318,8 +352,8 @@ export default function SendInvoice({ onBack, onSent }: SendInvoiceProps) {
                     <span className="font-bold text-on-surface block">{t('total_amount')}</span>
                     <span className="text-[10px] text-on-surface-variant/60 uppercase font-bold tracking-wider">
                       {t('total_for', { 
-                        amount: `€${(totalAmount * selectedContacts.length).toFixed(2)}`, 
-                        count: selectedContacts.length 
+                        amount: `€${(totalAmount * selectedRecipients.length).toFixed(2)}`, 
+                        count: selectedRecipients.length 
                       })}
                     </span>
                   </div>
@@ -344,7 +378,7 @@ export default function SendInvoice({ onBack, onSent }: SendInvoiceProps) {
                   </>
                 ) : (
                   <>
-                    {t('send_to', { count: selectedContacts.length })}
+                    {t('send_to', { count: selectedRecipients.length })}
                     <Send className="w-5 h-5" />
                   </>
                 )}

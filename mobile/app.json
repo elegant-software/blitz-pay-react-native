@@ -1,0 +1,45 @@
+{
+  "expo": {
+    "name": "BlitzPay",
+    "slug": "blitzpay-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "platforms": ["ios", "android", "web"],
+    "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#000000",
+      "resizeMode": "contain"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "app.blitzpay.mobile",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Used to scan QR codes for payments",
+        "NSFaceIDUsageDescription": "Used for biometric authentication"
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#000000"
+      },
+      "package": "app.blitzpay.mobile",
+      "permissions": ["CAMERA", "USE_BIOMETRIC", "USE_FINGERPRINT"]
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow BlitzPay to access your camera to scan QR codes."
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Allow BlitzPay to use Face ID for authentication."
+        }
+      ],
+      "expo-secure-store"
+    ],
+    "extra": {}
+  }
+}
