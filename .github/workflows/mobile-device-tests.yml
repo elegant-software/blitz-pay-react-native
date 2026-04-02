@@ -7,10 +7,6 @@ on:
         required: false
         default: ./mobile
         type: string
-      node-version:
-        required: false
-        default: "20"
-        type: string
 
 permissions:
   contents: read
@@ -21,7 +17,7 @@ jobs:
     runs-on: macos-latest
     env:
       APP_DIR: ${{ inputs.app-directory }}
-      NODE_VERSION: ${{ inputs.node-version || vars.MOBILE_NODE_VERSION || vars.NODE_VERSION || '20' }}
+      NODE_VERSION: ${{ vars.MOBILE_NODE_VERSION || vars.NODE_VERSION || '20' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4

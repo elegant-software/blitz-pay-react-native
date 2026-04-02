@@ -8,11 +8,6 @@ on:
         required: false
         default: ./mobile
         type: string
-      node-version:
-        description: Node.js version
-        required: false
-        default: "20"
-        type: string
       run-eas-build:
         description: Trigger EAS cloud build
         required: false
@@ -58,10 +53,6 @@ on:
       app-directory:
         required: false
         default: ./mobile
-        type: string
-      node-version:
-        required: false
-        default: "20"
         type: string
       run-eas-build:
         required: false
@@ -132,7 +123,7 @@ jobs:
         run: |
           {
             echo "app_directory=${{ inputs.app-directory || github.event.inputs.app-directory || './mobile' }}"
-            echo "node_version=${{ inputs.node-version || github.event.inputs.node-version || vars.MOBILE_NODE_VERSION || vars.NODE_VERSION || '20' }}"
+            echo "node_version=${{ vars.MOBILE_NODE_VERSION || vars.NODE_VERSION || '20' }}"
             echo "run_eas_build=${{ (inputs.run-eas-build || github.event.inputs.run-eas-build == 'true') && 'true' || 'false' }}"
             echo "eas_profile=${{ inputs.eas-profile || github.event.inputs.eas-profile || 'preview' }}"
             echo "eas_platform=${{ inputs.eas-platform || github.event.inputs.eas-platform || 'all' }}"
@@ -148,7 +139,6 @@ jobs:
     uses: ./.github/workflows/mobile-quality.yml
     with:
       app-directory: ${{ needs.resolve-config.outputs.app_directory }}
-      node-version: ${{ needs.resolve-config.outputs.node_version }}
 
   device-tests:
     name: Device Tests
@@ -157,7 +147,6 @@ jobs:
     uses: ./.github/workflows/mobile-device-tests.yml
     with:
       app-directory: ${{ needs.resolve-config.outputs.app_directory }}
-      node-version: ${{ needs.resolve-config.outputs.node_version }}
 
   eas-build:
     name: EAS Build
