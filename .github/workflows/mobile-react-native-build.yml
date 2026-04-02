@@ -178,7 +178,8 @@ jobs:
     name: EAS Build
     runs-on: ubuntu-latest
     needs: quality
-    if: ${{ (inputs.run-eas-build || github.event.inputs.run-eas-build == 'true') && secrets.EXPO_TOKEN != '' }}
+    # if: ${{ (inputs.run-eas-build || github.event.inputs.run-eas-build == 'true') && secrets.EXPO_TOKEN != '' }}
+    if: ${{ inputs.run-eas-build || github.event.inputs.run-eas-build == 'true' }}
     defaults:
       run:
         shell: bash
@@ -220,7 +221,8 @@ jobs:
     name: Publish EAS Update
     runs-on: ubuntu-latest
     needs: eas-build
-    if: ${{ (inputs.run-eas-update || github.event.inputs.run-eas-update == 'true') && secrets.EXPO_TOKEN != '' }}
+    # if: ${{ (inputs.run-eas-update || github.event.inputs.run-eas-update == 'true') && secrets.EXPO_TOKEN != '' }}
+    if: ${{ inputs.run-eas-update || github.event.inputs.run-eas-update == 'true' }}
     defaults:
       run:
         shell: bash
