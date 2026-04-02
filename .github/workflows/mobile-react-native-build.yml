@@ -196,9 +196,12 @@ jobs:
         id: duplicate-build-check
         working-directory: ${{ env.APP_DIR }}
         run: |
-          app_version="$(npx expo config --json | jq -r '.expo.version // empty')"
+          config_json="$(npx expo config --json)"
+          app_version="$(printf '%s' "$config_json" | jq -r '.expo.version // .version // empty')"
           if [ -z "$app_version" ]; then
-            echo "Could not read expo.version from app config."
+            echo "Could not read app version from Expo config (.expo.version or .version)."
+            echo "Resolved config:"
+            printf '%s\n' "$config_json"
             exit 1
           fi
 
