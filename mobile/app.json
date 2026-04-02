@@ -4,7 +4,11 @@
     "slug": "blitzpay-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
-    "platforms": ["ios", "android", "web"],
+    "platforms": [
+      "ios",
+      "android",
+      "web"
+    ],
     "userInterfaceStyle": "light",
     "splash": {
       "backgroundColor": "#000000",
@@ -23,7 +27,15 @@
         "backgroundColor": "#000000"
       },
       "package": "app.blitzpay.mobile",
-      "permissions": ["CAMERA", "USE_BIOMETRIC", "USE_FINGERPRINT"]
+      "permissions": [
+        "CAMERA",
+        "USE_BIOMETRIC",
+        "USE_FINGERPRINT",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT"
+      ]
     },
     "plugins": [
       [
@@ -40,6 +52,11 @@
       ],
       "expo-secure-store"
     ],
-    "extra": {}
+    "extra": {
+      "eas": {
+        "projectId": "283f0dd6-d7d4-4dcc-8613-66621b812e7f"
+      }
+    },
+    "owner": "m.mohammadi"
   }
 }

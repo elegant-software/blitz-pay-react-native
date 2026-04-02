@@ -1,0 +1,10 @@
+name: Call Issue Spec Automation
+on:
+  repository_dispatch:
+    types:
+      - project_status_change
+jobs:
+  call-automation:
+    uses: elegant-software/elegant-ci-cd-pipeline/.github/workflows/codex-github-issue-spec-kit-automation.yml@1f506dd1bd3686d6e31b3169977b2b672ff38a1a
+
+    secrets: inherit
