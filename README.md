@@ -31,6 +31,15 @@ View the web experience in AI Studio: https://ai.studio/apps/97422928-d654-4fcd-
    - `npm run android`
    - `npm run ios`
 
+### EAS build prerequisites
+
+Before running the GitHub Actions EAS jobs (`eas-build`, `eas-update`), make sure `mobile/eas.json` exists.
+
+Generate it with:
+`cd mobile && npx eas build:configure`
+
+This creates the EAS project config file used by CI.
+
 ## Environment variables
 
 ### Web (Vite)
