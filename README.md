@@ -40,6 +40,10 @@ Generate it with:
 
 This creates the EAS project config file used by CI.
 
+CI note for iOS: the `preview` profile is configured with `ios.simulator: true` in `mobile/eas.json`, so non-interactive GitHub Actions builds do not require signing credentials.
+
+If you need an installable iOS device build (internal distribution or production), run EAS credentials setup once in interactive mode (for example `cd mobile && npx eas credentials`) and then use a non-simulator profile.
+
 ## Environment variables
 
 ### Web (Vite)
