@@ -257,13 +257,25 @@ jobs:
             echo "No active duplicate build found. Continuing."
           fi
 
-      - name: Build with EAS
+      - name: Build with EAS (async + poll)
         if: ${{ steps.duplicate-build-check.outputs.skip_build != 'true' }}
+        env:
+          REQUESTED_PLATFORM: ${{ inputs.eas-platform || github.event.inputs.eas-platform || 'all' }}
+          REQUESTED_PROFILE: ${{ inputs.eas-profile || github.event.inputs.eas-profile || 'preview' }}
         run: |
-          eas build \
-            --non-interactive \
-            --profile "${{ inputs.eas-profile || github.event.inputs.eas-profile || 'preview' }}" \
-            --platform "${{ inputs.eas-platform || github.event.inputs.eas-platform || 'all' }}"
+          case "$REQUESTED_PLATFORM" in
+            all) platforms="ios,android" ;;
+            ios) platforms="ios" ;;
+            android) platforms="android" ;;
+            *)
+              echo "Unsupported eas-platform: $REQUESTED_PLATFORM"
+              exit 1
+              ;;
+          esac
+
+          node ./scripts/eas-build-async.js \
+            --profile "$REQUESTED_PROFILE" \
+            --platforms "$platforms"
 
       - name: Duplicate build detected
         if: ${{ steps.duplicate-build-check.outputs.skip_build == 'true' }}

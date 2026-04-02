@@ -7,6 +7,8 @@
     "web": "expo start --web",
     "android": "expo start --android",
     "ios": "expo start --ios",
+    "build:eas:async": "node ./scripts/eas-build-async.js",
+    "build:eas:async:clear-cache": "EAS_CLEAR_CACHE=1 node ./scripts/eas-build-async.js",
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit --pretty false",
     "test": "node ./scripts/run-tests.js",
