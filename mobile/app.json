@@ -11,6 +11,7 @@
     ],
     "userInterfaceStyle": "light",
     "splash": {
+      "image": "./assets/splashscreen_logo.png",
       "backgroundColor": "#000000",
       "resizeMode": "contain"
     },
@@ -26,6 +27,11 @@
       "adaptiveIcon": {
         "backgroundColor": "#000000"
       },
+      "splash": {
+        "image": "./assets/splashscreen_logo.png",
+        "backgroundColor": "#000000",
+        "resizeMode": "contain"
+      },
       "package": "app.blitzpay.mobile",
       "permissions": [
         "CAMERA",
@@ -38,6 +44,14 @@
       ]
     },
     "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splashscreen_logo.png",
+          "backgroundColor": "#000000",
+          "resizeMode": "contain"
+        }
+      ],
       [
         "expo-camera",
         {
