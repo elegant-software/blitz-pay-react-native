@@ -166,7 +166,7 @@ jobs:
       EXPO_PUBLIC_API_URL: ${{ vars.EXPO_PUBLIC_API_URL }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Validate EXPO_TOKEN
         run: |
@@ -182,7 +182,7 @@ jobs:
           test -f eas.json || { echo "eas.json not found in $(pwd)"; exit 1; }
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -200,7 +200,7 @@ jobs:
 
       - name: Resolve app release version
         id: release-version
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const requestedTag = (process.env.RELEASE_NOTES_TAG || "latest").trim();
@@ -353,7 +353,7 @@ jobs:
       EXPO_PUBLIC_API_URL: ${{ vars.EXPO_PUBLIC_API_URL }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Validate EXPO_TOKEN
         run: |
@@ -363,7 +363,7 @@ jobs:
           fi
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -392,7 +392,7 @@ jobs:
 
       - name: Resolve release notes message
         id: release-notes
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const requestedTag = (process.env.RELEASE_NOTES_TAG || "latest").trim();
@@ -467,10 +467,10 @@ jobs:
       REQUESTED_PROFILE: ${{ needs.resolve-config.outputs.eas_profile }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
