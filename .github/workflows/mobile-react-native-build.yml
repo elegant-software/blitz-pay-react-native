@@ -261,6 +261,7 @@ jobs:
           } > .env
 
       - name: Skip duplicate active build
+        if: false
         id: duplicate-build-check
         working-directory: ${{ env.APP_DIR }}
         run: |

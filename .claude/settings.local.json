@@ -12,7 +12,32 @@
       "Bash(npm run:*)",
       "Bash(sed -i '' \"s|from ''../lib/keycloak''|from ''../lib/keycloak''|g\" /Users/mehdi/MyProject/blitzpay-prototype/src/screens/Login.tsx)",
       "Bash(sed -i '' \"s|from ''./lib/keycloak''|from ''./lib/keycloak''|g\" /Users/mehdi/MyProject/blitzpay-prototype/src/App.tsx)",
-      "Bash(sed -i '' \"s|from ''./lib/keycloak''|from ''./lib/keycloak''|g\" /Users/mehdi/MyProject/blitzpay-prototype/src/main.tsx)"
+      "Bash(sed -i '' \"s|from ''./lib/keycloak''|from ''./lib/keycloak''|g\" /Users/mehdi/MyProject/blitzpay-prototype/src/main.tsx)",
+      "Bash(npx tsc:*)",
+      "Read(//Users/mehdi/Library/Android/sdk/emulator/**)",
+      "Bash(adb logcat:*)",
+      "Bash(adb devices:*)",
+      "Bash(adb reverse:*)",
+      "Bash(curl:*)",
+      "Bash(adb shell:*)",
+      "Bash(adb uninstall:*)",
+      "Bash(kill 17441)",
+      "Bash(npx expo:*)",
+      "Bash(ANDROID_SERIAL=R5CX50XSWFB npx expo run:android)",
+      "Bash(./gradlew assembleDebug)",
+      "Bash(./gradlew assembleDebug --no-daemon)",
+      "Bash(npx react-native:*)",
+      "Bash(rm -rf app/src/main/assets/_expo app/src/main/assets/metadata.json)",
+      "Bash(./gradlew assembleRelease)",
+      "Bash(ipconfig getifaddr:*)",
+      "Bash(xargs kill:*)",
+      "Bash(unzip -l /Users/mehdi/MyProject/blitz-pay-prototype/mobile/android/app/build/outputs/apk/debug/app-debug.apk)",
+      "Bash(openssl s_client -connect keycloak.elegantsoftware.de:443 -servername keycloak.elegantsoftware.de)",
+      "Bash(openssl x509:*)",
+      "Read(//tmp/**)",
+      "mcp__claude_ai_Notion__notion-fetch",
+      "mcp__claude_ai_Notion__notion-update-page",
+      "Bash(git add:*)"
     ]
   }
 }
