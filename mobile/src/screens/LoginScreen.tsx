@@ -72,6 +72,7 @@ export default function LoginScreen() {
           contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 40, paddingBottom: insets.bottom + 32 }]}
           keyboardShouldPersistTaps="handled"
         >
+          <View style={styles.centerContent}>
           {/* Logo */}
           <View style={styles.logoSection}>
             <View style={styles.logoRing}>
@@ -165,6 +166,7 @@ export default function LoginScreen() {
               </TouchableOpacity>
             </View>
           </View>
+          </View>
 
           {__DEV__ && (
             <View style={styles.devContainer}>
@@ -197,7 +199,6 @@ const styles = StyleSheet.create({
   scroll: {
     flexGrow: 1,
     paddingHorizontal: spacing.md,
-    justifyContent: 'center',
   },
   logoSection: {
     alignItems: 'center',
@@ -346,8 +347,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
+  centerContent: {
+    flex: 1,
+    justifyContent: 'center',
+  },
   devContainer: {
-    marginTop: 32,
+    marginTop: 16,
     alignItems: 'center',
   },
   devToggle: {
