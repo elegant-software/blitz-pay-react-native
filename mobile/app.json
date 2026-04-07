@@ -43,6 +43,7 @@
         "android.permission.USE_FINGERPRINT"
       ]
     },
+    "newArchEnabled": true,
     "plugins": [
       [
         "expo-splash-screen",
