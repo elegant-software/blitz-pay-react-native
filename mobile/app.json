@@ -16,6 +16,7 @@
       "resizeMode": "contain"
     },
     "ios": {
+      "newArchEnabled": true,
       "supportsTablet": false,
       "bundleIdentifier": "app.blitzpay.mobile",
       "infoPlist": {
@@ -24,6 +25,7 @@
       }
     },
     "android": {
+      "newArchEnabled": true,
       "adaptiveIcon": {
         "backgroundColor": "#000000"
       },
@@ -43,7 +45,6 @@
         "android.permission.USE_FINGERPRINT"
       ]
     },
-    "newArchEnabled": true,
     "plugins": [
       [
         "expo-splash-screen",
