@@ -66,7 +66,8 @@
           "faceIDPermission": "Allow BlitzPay to use Face ID for authentication."
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      ["./plugins/withNdkVersion", "30.0.14904198"]
     ],
     "extra": {
       "eas": {

@@ -249,7 +249,12 @@ export function AuthProvider({ children, onSessionExpired }: AuthProviderProps) 
       idToken: d.id_token,
       expiresAt: Date.now() + d.expires_in * 1000,
     };
-    await storage.setItem(SESSION_KEY, JSON.stringify(session));
+    try {
+      await storage.setItem(SESSION_KEY, JSON.stringify(session));
+    } catch (storageErr) {
+      console.error('[auth] failed to persist session', storageErr);
+      // Continue login even if storage fails — session will work for this app lifetime
+    }
     setToken(d.access_token);
     setUser(parseUser(d.id_token));
     setAuthenticated(true);

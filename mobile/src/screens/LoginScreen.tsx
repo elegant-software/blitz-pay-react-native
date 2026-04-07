@@ -40,8 +40,11 @@ export default function LoginScreen() {
     try {
       await login(email.trim(), password);
     } catch (e) {
-      const key = e instanceof Error ? e.message : 'network_error';
-      setError(t(key as 'wrong_credentials' | 'account_locked' | 'network_error'));
+      console.error('[LoginScreen] login error:', e);
+      const msg = e instanceof Error ? e.message : 'network_error';
+      const knownKeys = ['wrong_credentials', 'account_locked', 'network_error'] as const;
+      const key = knownKeys.find((k) => k === msg);
+      setError(key ? t(key) : t('network_error'));
     } finally {
       setLoading(false);
     }

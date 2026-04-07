@@ -6,6 +6,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider } from './src/lib/auth';
 import { LanguageProvider } from './src/lib/LanguageContext';
 import AppNavigator from './src/navigation/AppNavigator';
+import ErrorBoundary from './src/components/ErrorBoundary';
 import { initObservability } from './src/lib/observability';
 
 export default function App() {
@@ -16,14 +17,16 @@ export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <LanguageProvider>
-          <AuthProvider>
-            <NavigationContainer>
-              <StatusBar style="dark" />
-              <AppNavigator />
-            </NavigationContainer>
-          </AuthProvider>
-        </LanguageProvider>
+        <ErrorBoundary>
+          <LanguageProvider>
+            <AuthProvider>
+              <NavigationContainer>
+                <StatusBar style="dark" />
+                <AppNavigator />
+              </NavigationContainer>
+            </AuthProvider>
+          </LanguageProvider>
+        </ErrorBoundary>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
