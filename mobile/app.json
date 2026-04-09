@@ -69,7 +69,8 @@
         "./plugins/withNdkVersion",
         "30.0.14904198"
       ],
-      "expo-font"
+      "expo-font",
+      "./plugins/withNetworkSecurityConfig"
     ],
     "extra": {
       "eas": {

@@ -212,7 +212,12 @@ export function AuthProvider({ children, onSessionExpired }: AuthProviderProps) 
 
   const login = async (email: string, password: string): Promise<void> => {
     const url = `${config.keycloakUrl}/realms/${config.keycloakRealm}/protocol/openid-connect/token`;
+    console.log('[auth] login: POST', url, {
+      clientId: config.keycloakClientId,
+      realm: config.keycloakRealm,
+    });
     let res: Response;
+    const startedAt = Date.now();
     try {
       res = await fetch(url, {
         method: 'POST',
@@ -225,8 +230,25 @@ export function AuthProvider({ children, onSessionExpired }: AuthProviderProps) 
           scope: 'openid profile email',
         }).toString(),
       });
-    } catch {
-      throw new Error('network_error');
+      console.log('[auth] login: response', res.status, `(${Date.now() - startedAt}ms)`);
+    } catch (fetchErr) {
+      const cause = fetchErr instanceof Error ? fetchErr : new Error(String(fetchErr));
+      const detail = {
+        url,
+        keycloakUrl: config.keycloakUrl,
+        realm: config.keycloakRealm,
+        clientId: config.keycloakClientId,
+        elapsedMs: Date.now() - startedAt,
+        name: cause.name,
+        message: cause.message,
+        stack: cause.stack,
+      };
+      console.error('[auth] login: fetch failed — server unreachable?', detail);
+      observability.warn('auth_login_network_error', detail);
+      const err = new Error('network_error');
+      (err as Error & { detail?: unknown }).detail = detail;
+      (err as Error & { cause?: unknown }).cause = cause;
+      throw err;
     }
 
     if (!res.ok) {

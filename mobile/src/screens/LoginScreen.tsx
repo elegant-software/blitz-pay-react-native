@@ -20,7 +20,10 @@ import { colors, spacing, radius, shadow } from '../lib/theme';
 import { config } from '../lib/config';
 import type { RootStackNav } from '../types';
 
+const TAG = '[LoginScreen]';
+
 export default function LoginScreen() {
+  console.log(TAG, 'render');
   const { t } = useLanguage();
   const { login, loginWithBiometric, isBiometricAvailable, biometricEnrolled } = useAuth();
   const navigation = useNavigation<RootStackNav>();
@@ -34,14 +37,35 @@ export default function LoginScreen() {
   const [showDevInfo, setShowDevInfo] = useState(false);
 
   const handleLogin = async () => {
+    console.log(TAG, 'handleLogin called', { email: email.trim(), hasPassword: !!password });
     if (!email.trim() || !password.trim()) return;
     setError('');
     setLoading(true);
     try {
+      console.log(TAG, 'calling login...');
       await login(email.trim(), password);
+      console.log(TAG, 'login succeeded');
     } catch (e) {
-      console.error('[LoginScreen] login error:', e);
-      const msg = e instanceof Error ? e.message : 'network_error';
+      const err = e as Error & { detail?: Record<string, unknown>; cause?: unknown };
+      const msg = err instanceof Error ? err.message : 'network_error';
+      console.error(TAG, 'login error:', {
+        message: msg,
+        name: err?.name,
+        detail: err?.detail,
+        cause: err?.cause instanceof Error
+          ? { name: err.cause.name, message: err.cause.message }
+          : err?.cause,
+        keycloakUrl: config.keycloakUrl,
+        realm: config.keycloakRealm,
+        clientId: config.keycloakClientId,
+        stack: err?.stack,
+      });
+      if (msg === 'network_error') {
+        console.warn(
+          TAG,
+          `Keycloak server appears unreachable at ${config.keycloakUrl}/realms/${config.keycloakRealm} — check that the host is resolvable from this device and the server is running.`,
+        );
+      }
       const knownKeys = ['wrong_credentials', 'account_locked', 'network_error'] as const;
       const key = knownKeys.find((k) => k === msg);
       setError(key ? t(key) : t('network_error'));
@@ -51,11 +75,14 @@ export default function LoginScreen() {
   };
 
   const handleBiometric = async () => {
+    console.log(TAG, 'handleBiometric called');
     setError('');
     setLoading(true);
     try {
       await loginWithBiometric();
+      console.log(TAG, 'biometric login succeeded');
     } catch (e) {
+      console.error(TAG, 'biometric error:', e);
       const key = e instanceof Error ? e.message : 'network_error';
       if (key !== 'biometric_failed') {
         setError(t(key as 'network_error'));
