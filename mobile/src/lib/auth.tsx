@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useRef, useState, type Rea
 import { Platform } from 'react-native';
 import { storage } from './storage';
 import { config } from './config';
+import { observability } from './observability';
 
 // expo-local-authentication is native-only — not available on web
 const LocalAuthentication = Platform.OS !== 'web'
@@ -211,7 +212,12 @@ export function AuthProvider({ children, onSessionExpired }: AuthProviderProps) 
 
   const login = async (email: string, password: string): Promise<void> => {
     const url = `${config.keycloakUrl}/realms/${config.keycloakRealm}/protocol/openid-connect/token`;
+    console.log('[auth] login: POST', url, {
+      clientId: config.keycloakClientId,
+      realm: config.keycloakRealm,
+    });
     let res: Response;
+    const startedAt = Date.now();
     try {
       res = await fetch(url, {
         method: 'POST',
@@ -224,13 +230,34 @@ export function AuthProvider({ children, onSessionExpired }: AuthProviderProps) 
           scope: 'openid profile email',
         }).toString(),
       });
-    } catch {
-      throw new Error('network_error');
+      console.log('[auth] login: response', res.status, `(${Date.now() - startedAt}ms)`);
+    } catch (fetchErr) {
+      const cause = fetchErr instanceof Error ? fetchErr : new Error(String(fetchErr));
+      const detail = {
+        url,
+        keycloakUrl: config.keycloakUrl,
+        realm: config.keycloakRealm,
+        clientId: config.keycloakClientId,
+        elapsedMs: Date.now() - startedAt,
+        name: cause.name,
+        message: cause.message,
+        stack: cause.stack,
+      };
+      console.error('[auth] login: fetch failed — server unreachable?', detail);
+      observability.warn('auth_login_network_error', detail);
+      const err = new Error('network_error');
+      (err as Error & { detail?: unknown }).detail = detail;
+      (err as Error & { cause?: unknown }).cause = cause;
+      throw err;
     }
 
     if (!res.ok) {
       const body = await res.json().catch(() => ({})) as { error?: string; error_description?: string };
-      console.error('[auth] login failed', res.status, body.error, body.error_description);
+      observability.warn('auth_login_failed', {
+        status: res.status,
+        error: body.error ?? 'unknown',
+        reason: body.error_description ?? 'n/a',
+      });
       if (body.error === 'invalid_grant') throw new Error('wrong_credentials');
       if (body.error === 'unauthorized_client') throw new Error('account_locked');
       if (res.status === 401) throw new Error('wrong_credentials');
@@ -244,7 +271,12 @@ export function AuthProvider({ children, onSessionExpired }: AuthProviderProps) 
       idToken: d.id_token,
       expiresAt: Date.now() + d.expires_in * 1000,
     };
-    await storage.setItem(SESSION_KEY, JSON.stringify(session));
+    try {
+      await storage.setItem(SESSION_KEY, JSON.stringify(session));
+    } catch (storageErr) {
+      console.error('[auth] failed to persist session', storageErr);
+      // Continue login even if storage fails — session will work for this app lifetime
+    }
     setToken(d.access_token);
     setUser(parseUser(d.id_token));
     setAuthenticated(true);

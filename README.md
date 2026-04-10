@@ -107,6 +107,9 @@ The root `.env.example` lists every required key. At a minimum, set the followin
 - `VITE_AUTH_BYPASS`: Set to `true` for dev-only bypass mode that auto-logs a fake user without Keycloak.
 - `VITE_KEYCLOAK_URL`, `VITE_KEYCLOAK_REALM`, `VITE_KEYCLOAK_CLIENT_ID`: Keycloak server, realm, and client for the SPA.
 - `KEYCLOAK_SERVER_CLIENT_ID`, `KEYCLOAK_ADMIN_SECRET`: Server-side credentials consumed by `server.ts`; they must never be prefixed with `VITE_` because they must stay private.
+- `OBS_OTLP_LOGS_ENDPOINT`: OTLP endpoint for logs. For Grafana Cloud OTLP gateway, set this to your `/otlp` URL; the server appends `/v1/logs`.
+- `OBS_OTLP_AUTH_HEADER`, `OBS_OTLP_AUTH_VALUE`: Auth header pair used by the server when forwarding logs to OTLP (`Authorization: Basic <base64(instance_id:token)>` for Grafana Cloud).
+- `OBS_OTLP_SERVICE_NAMESPACE`: Optional service namespace attached as a resource attribute.
 
 ### React Native (Expo)
 
@@ -115,3 +118,23 @@ Use `mobile/.env.example` as the template. Populate these keys for the mobile ex
 - `EXPO_PUBLIC_KEYCLOAK_URL`, `EXPO_PUBLIC_KEYCLOAK_REALM`, `EXPO_PUBLIC_KEYCLOAK_CLIENT_ID`: Match the same Keycloak deployment used by the web app.
 - `EXPO_PUBLIC_AUTH_BYPASS`: Mirrors `VITE_AUTH_BYPASS` so you can skip Keycloak during development.
 - `EXPO_PUBLIC_API_URL`: Base URL for the backend API the mobile app calls (defaults to `http://localhost:3001`).
+- `EXPO_PUBLIC_OBSERVABILITY_ENABLED`: Enables mobile log capture and OTLP forwarding through `server.ts`.
+- `EXPO_PUBLIC_OBSERVABILITY_ENVIRONMENT`, `EXPO_PUBLIC_OBSERVABILITY_SERVICE_NAME`, `EXPO_PUBLIC_OBSERVABILITY_SERVICE_VERSION`: Resource metadata added to mobile logs.
+- `EXPO_PUBLIC_OBSERVABILITY_INGEST_PATH`: Backend ingestion path (`/api/observability/mobile-logs` by default).
+- `EXPO_PUBLIC_OBSERVABILITY_SAMPLE_RATE`: 0..1 sampling applied before queueing logs on device.
+- `EXPO_PUBLIC_OBSERVABILITY_CAPTURE_CONSOLE`: Whether `console.warn`/`console.error` are captured automatically.
+
+## OpenTelemetry Logs to Grafana (Android + iOS)
+
+1. Configure server OTLP vars in root `.env`:
+   - `OBS_OTLP_LOGS_ENDPOINT`
+   - `OBS_OTLP_AUTH_HEADER`
+   - `OBS_OTLP_AUTH_VALUE`
+2. Configure mobile flags in `mobile/.env`:
+   - `EXPO_PUBLIC_OBSERVABILITY_ENABLED=true`
+   - `EXPO_PUBLIC_OBSERVABILITY_ENVIRONMENT=production` (or staging/dev)
+3. Start the API server (`npm run server`) and mobile app (`cd mobile && npm run start`).
+4. Mobile app logs/errors are batched and posted to `POST /api/observability/mobile-logs`, then forwarded as OTLP logs to Grafana.
+5. In Grafana Explore, query logs by labels/resource attrs such as `service.name="blitzpay-mobile"` and `deployment.environment`.
+
+Production recommendation: point `OBS_OTLP_LOGS_ENDPOINT` to Grafana Alloy/OpenTelemetry Collector and let the Collector export to Grafana Cloud over OTLP/protobuf. Direct JSON OTLP forwarding is best suited for lower-volume/test usage.

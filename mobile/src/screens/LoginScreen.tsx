@@ -17,9 +17,13 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../lib/auth';
 import { useLanguage } from '../lib/LanguageContext';
 import { colors, spacing, radius, shadow } from '../lib/theme';
+import { config } from '../lib/config';
 import type { RootStackNav } from '../types';
 
+const TAG = '[LoginScreen]';
+
 export default function LoginScreen() {
+  console.log(TAG, 'render');
   const { t } = useLanguage();
   const { login, loginWithBiometric, isBiometricAvailable, biometricEnrolled } = useAuth();
   const navigation = useNavigation<RootStackNav>();
@@ -30,27 +34,55 @@ export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showDevInfo, setShowDevInfo] = useState(false);
 
   const handleLogin = async () => {
+    console.log(TAG, 'handleLogin called', { email: email.trim(), hasPassword: !!password });
     if (!email.trim() || !password.trim()) return;
     setError('');
     setLoading(true);
     try {
+      console.log(TAG, 'calling login...');
       await login(email.trim(), password);
+      console.log(TAG, 'login succeeded');
     } catch (e) {
-      const key = e instanceof Error ? e.message : 'network_error';
-      setError(t(key as 'wrong_credentials' | 'account_locked' | 'network_error'));
+      const err = e as Error & { detail?: Record<string, unknown>; cause?: unknown };
+      const msg = err instanceof Error ? err.message : 'network_error';
+      console.error(TAG, 'login error:', {
+        message: msg,
+        name: err?.name,
+        detail: err?.detail,
+        cause: err?.cause instanceof Error
+          ? { name: err.cause.name, message: err.cause.message }
+          : err?.cause,
+        keycloakUrl: config.keycloakUrl,
+        realm: config.keycloakRealm,
+        clientId: config.keycloakClientId,
+        stack: err?.stack,
+      });
+      if (msg === 'network_error') {
+        console.warn(
+          TAG,
+          `Keycloak server appears unreachable at ${config.keycloakUrl}/realms/${config.keycloakRealm} — check that the host is resolvable from this device and the server is running.`,
+        );
+      }
+      const knownKeys = ['wrong_credentials', 'account_locked', 'network_error'] as const;
+      const key = knownKeys.find((k) => k === msg);
+      setError(key ? t(key) : t('network_error'));
     } finally {
       setLoading(false);
     }
   };
 
   const handleBiometric = async () => {
+    console.log(TAG, 'handleBiometric called');
     setError('');
     setLoading(true);
     try {
       await loginWithBiometric();
+      console.log(TAG, 'biometric login succeeded');
     } catch (e) {
+      console.error(TAG, 'biometric error:', e);
       const key = e instanceof Error ? e.message : 'network_error';
       if (key !== 'biometric_failed') {
         setError(t(key as 'network_error'));
@@ -70,6 +102,7 @@ export default function LoginScreen() {
           contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 40, paddingBottom: insets.bottom + 32 }]}
           keyboardShouldPersistTaps="handled"
         >
+          <View style={styles.centerContent}>
           {/* Logo */}
           <View style={styles.logoSection}>
             <View style={styles.logoRing}>
@@ -163,6 +196,27 @@ export default function LoginScreen() {
               </TouchableOpacity>
             </View>
           </View>
+          </View>
+
+          {__DEV__ && (
+            <View style={styles.devContainer}>
+              <TouchableOpacity onPress={() => setShowDevInfo(!showDevInfo)} style={styles.devToggle}>
+                <Ionicons name="bug-outline" size={14} color={colors.gray500} />
+                <Text style={styles.devToggleText}>Dev Info</Text>
+                <Ionicons name={showDevInfo ? 'chevron-up' : 'chevron-down'} size={14} color={colors.gray500} />
+              </TouchableOpacity>
+              {showDevInfo && (
+                <View style={styles.devPanel}>
+                  {Object.entries(config).map(([key, value]) => (
+                    <View key={key} style={styles.devRow}>
+                      <Text style={styles.devKey}>{key}</Text>
+                      <Text style={styles.devValue} selectable>{String(value)}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
     </LinearGradient>
@@ -175,7 +229,6 @@ const styles = StyleSheet.create({
   scroll: {
     flexGrow: 1,
     paddingHorizontal: spacing.md,
-    justifyContent: 'center',
   },
   logoSection: {
     alignItems: 'center',
@@ -323,5 +376,51 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontSize: 14,
     fontWeight: '600',
+  },
+  centerContent: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  devContainer: {
+    marginTop: 16,
+    alignItems: 'center',
+  },
+  devToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  devToggleText: {
+    fontSize: 12,
+    color: colors.gray500,
+  },
+  devPanel: {
+    width: '100%',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: radius.lg,
+    padding: spacing.sm,
+    marginTop: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  devRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 4,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255,255,255,0.06)',
+  },
+  devKey: {
+    fontSize: 11,
+    color: colors.gray500,
+    flex: 1,
+  },
+  devValue: {
+    fontSize: 11,
+    color: colors.gray300,
+    flex: 1,
+    textAlign: 'right',
   },
 });
