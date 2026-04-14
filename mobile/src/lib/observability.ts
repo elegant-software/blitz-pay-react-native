@@ -170,15 +170,32 @@ async function flushBatch(trigger: string): Promise<void> {
   }
 }
 
+function mirrorToConsole(level: LogLevel, message: string, attributes?: Record<string, AttributeValue>, error?: Error): void {
+  if (!__DEV__) return;
+  const tag = `[obs:${level}] ${message}`;
+  const payload = attributes && Object.keys(attributes).length ? attributes : undefined;
+  if (level === 'error') {
+    originalConsole.error(tag, payload ?? '', error ?? '');
+  } else if (level === 'warn') {
+    originalConsole.warn(tag, payload ?? '');
+  } else {
+    console.log(tag, payload ?? '');
+  }
+}
+
 function record(level: LogLevel, message: string, attributes?: LogAttributes, error?: Error, isFatal?: boolean): void {
-  if (!config.observabilityEnabled || !shouldSample()) return;
   const sanitizedMessage = sanitizeText(message).slice(0, MAX_MESSAGE_LENGTH);
+  const sanitizedAttributes = sanitizeAttributes(attributes);
+
+  mirrorToConsole(level, sanitizedMessage, sanitizedAttributes, error);
+
+  if (!config.observabilityEnabled || !shouldSample()) return;
 
   enqueue({
     timestamp: new Date().toISOString(),
     severityText: toSeverityText(level),
     message: sanitizedMessage,
-    attributes: sanitizeAttributes(attributes),
+    attributes: sanitizedAttributes,
     exception: error ? {
       type: error.name,
       message: sanitizeText(error.message).slice(0, MAX_MESSAGE_LENGTH),

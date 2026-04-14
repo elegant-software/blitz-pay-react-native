@@ -60,7 +60,7 @@
             }
           },
           "ios": {
-            "deploymentTarget": "14.0"
+            "deploymentTarget": "15.1"
           }
         }
       ],

@@ -15,6 +15,7 @@ import * as Haptics from 'expo-haptics';
 import { useLanguage } from '../lib/LanguageContext';
 import { useAuth } from '../lib/auth';
 import { startTrueLayerPayment } from '../lib/truelayer';
+import { observability } from '../lib/observability';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import type { RootStackNav, RootStackParamList } from '../types';
 
@@ -40,6 +41,13 @@ export default function CheckoutScreen() {
     setError('');
     setProcessing(true);
 
+    observability.info('checkout_confirm_started', {
+      method: selectedMethod,
+      amount,
+      merchantName,
+      invoiceId: invoiceId ?? null,
+    });
+
     try {
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
@@ -55,10 +63,26 @@ export default function CheckoutScreen() {
         await new Promise((resolve) => setTimeout(resolve, 1800));
       }
 
+      observability.info('checkout_confirm_succeeded', {
+        method: selectedMethod,
+        amount,
+        invoiceId: invoiceId ?? null,
+      });
       setShowSuccess(true);
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (err) {
       const key = err instanceof Error ? err.message : 'truelayer_failed';
+      observability.error(
+        'checkout_confirm_failed',
+        {
+          method: selectedMethod,
+          amount,
+          invoiceId: invoiceId ?? null,
+          reasonKey: key,
+          message: err instanceof Error ? err.message : String(err),
+        },
+        err instanceof Error ? err : undefined
+      );
       setError(t(key as Parameters<typeof t>[0]));
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {
