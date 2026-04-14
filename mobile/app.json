@@ -46,6 +46,25 @@
     },
     "plugins": [
       [
+        "expo-build-properties",
+        {
+          "android": {
+            "packagingOptions": {
+              "pickFirst": [
+                "META-INF/LICENSE-MIT"
+              ],
+              "exclude": [
+                "META-INF/AL2.0",
+                "META-INF/LGPL2.1"
+              ]
+            }
+          },
+          "ios": {
+            "deploymentTarget": "15.1"
+          }
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "image": "./assets/splashscreen_logo.png",
@@ -67,29 +86,10 @@
       ],
       "expo-secure-store",
       [
-        "expo-build-properties",
-        {
-          "android": {
-            "minSdkVersion": 24,
-            "packagingOptions": {
-              "pickFirst": [
-                "META-INF/LICENSE-MIT"
-              ],
-              "exclude": [
-                "/META-INF/{AL2.0,LGPL2.1}"
-              ]
-            }
-          },
-          "ios": {
-            "deploymentTarget": "14.0"
-          }
-        }
-      ],
-      [
         "./plugins/withNdkVersion",
         "30.0.14904198"
       ],
-      "./plugins/withTrueLayerAndroid",
+      "./plugins/withTrueLayerAndroidConfig",
       "expo-font",
       "./plugins/withNetworkSecurityConfig"
     ],

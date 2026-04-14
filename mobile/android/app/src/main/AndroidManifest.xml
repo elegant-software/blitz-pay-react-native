@@ -28,7 +28,14 @@
         <action android:name="android.intent.action.VIEW"/>
         <category android:name="android.intent.category.DEFAULT"/>
         <category android:name="android.intent.category.BROWSABLE"/>
-        <data android:scheme="blitzpay" android:host="checkout" android:pathPrefix="/truelayer-return"/>
+        <data android:scheme="blitzpay"/>
+        <data android:scheme="exp+blitzpay-mobile"/>
+      </intent-filter>
+      <intent-filter android:autoVerify="false">
+        <action android:name="android.intent.action.VIEW"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+        <category android:name="android.intent.category.BROWSABLE"/>
+        <data android:scheme="blitzpay" android:host="payments"/>
       </intent-filter>
     </activity>
   </application>

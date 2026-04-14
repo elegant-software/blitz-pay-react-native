@@ -1,186 +1,291 @@
 import { Platform } from 'react-native';
+import {
+  Environment,
+  ResultType,
+  TrueLayerPaymentsSDKWrapper,
+  type TrueLayerResult,
+} from 'rn-truelayer-payments-sdk';
 import { config } from './config';
-import { storage } from './storage';
+import { observability } from './observability';
 
-const ACTIVE_PAYMENT_STORAGE_KEY = 'truelayer_active_payment';
-const PENDING_RETURN_URL_STORAGE_KEY = 'truelayer_pending_return_url';
-
-type TrueLayerEnvironment = 'sandbox' | 'production';
-
-export interface TrueLayerPaymentContext {
-  paymentId: string;
-  resourceToken: string;
-  redirectUri: string;
-  preferredCountryCode?: string;
-  environment: TrueLayerEnvironment;
-}
-
-interface CreateTrueLayerPaymentInput {
-  accessToken?: string | null;
+type PaymentRequestParams = {
+  token: string | null;
   amount: number;
-  currency?: string;
   merchantName: string;
   invoiceId?: string;
-  redirectUri: string;
-}
+  user?: {
+    id?: string;
+    email?: string;
+    name?: string;
+  } | null;
+};
 
-interface PaymentRequestResponse {
+type PaymentInitResponse = {
   paymentId: string;
   resourceToken: string;
   redirectUri: string;
+  environment: Environment;
   preferredCountryCode?: string;
-  environment: TrueLayerEnvironment;
+};
+
+type PaymentApiResponse = Record<string, unknown>;
+
+function getRedirectUri(): string {
+  return `${config.trueLayerRedirectScheme}://${config.trueLayerRedirectHost}/${config.trueLayerRedirectPath}`;
 }
 
-function normalizeEnvironment(value: unknown): TrueLayerEnvironment {
-  return String(value).toLowerCase() === 'production' ? 'production' : 'sandbox';
+function generateUuid(): string {
+  const cryptoRef = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
+  if (cryptoRef?.randomUUID) {
+    return cryptoRef.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
 }
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value != null && typeof value === 'object' ? value as Record<string, unknown> : null;
+function getEnvironment(value: unknown): Environment {
+  const normalized = typeof value === 'string' ? value.toLowerCase() : config.trueLayerEnvironment.toLowerCase();
+  return normalized === 'production' ? Environment.Production : Environment.Sandbox;
 }
 
-function readString(record: Record<string, unknown> | null, keys: string[]): string | undefined {
-  if (!record) return undefined;
-
+function readString(source: PaymentApiResponse, keys: string[]): string | undefined {
   for (const key of keys) {
-    const value = record[key];
+    const value = source[key];
     if (typeof value === 'string' && value.trim().length > 0) {
       return value;
     }
   }
-
   return undefined;
 }
 
-async function parseResponseBody(response: Response): Promise<unknown> {
-  const contentType = response.headers.get('content-type') ?? '';
-
-  if (contentType.includes('application/json')) {
-    return response.json();
-  }
-
-  const text = await response.text();
-  if (!text) return null;
-
-  try {
-    return JSON.parse(text) as unknown;
-  } catch {
-    return text;
-  }
-}
-
-function parsePaymentResponse(payload: unknown, fallbackRedirectUri: string): PaymentRequestResponse {
-  const root = asRecord(payload);
-  const nestedPayment = asRecord(root?.payment);
-  const nestedData = asRecord(root?.data);
-  const nestedPaymentData = asRecord(nestedData?.payment);
-  const sources = [root, nestedPayment, nestedData, nestedPaymentData];
-
-  const paymentId = sources
-    .map((source) => readString(source, ['paymentId', 'payment_id', 'id']))
-    .find(Boolean);
-  const resourceToken = sources
-    .map((source) => readString(source, ['resourceToken', 'resource_token', 'token']))
-    .find(Boolean);
-  const redirectUri = sources
-    .map((source) => readString(source, ['redirectUri', 'redirect_uri', 'returnUri', 'return_uri']))
-    .find(Boolean) ?? fallbackRedirectUri;
-  const preferredCountryCode = sources
-    .map((source) => readString(source, ['preferredCountryCode', 'preferred_country_code', 'countryCode', 'country_code']))
-    .find(Boolean);
-  const environment = normalizeEnvironment(
-    sources
-      .map((source) => readString(source, ['environment', 'env']))
-      .find(Boolean) ?? config.trueLayerEnvironment,
-  );
-
-  if (!paymentId || !resourceToken) {
-    throw new Error('TrueLayer payment request response is missing payment identifiers.');
-  }
+function extractPaymentContext(payload: PaymentApiResponse): {
+  paymentId?: string;
+  resourceToken?: string;
+  redirectUri?: string;
+  preferredCountryCode?: string;
+  environment?: Environment;
+  paymentRequestId?: string;
+} {
+  const payment = typeof payload.payment === 'object' && payload.payment ? (payload.payment as PaymentApiResponse) : undefined;
+  const source = payment ?? payload;
 
   return {
-    paymentId,
-    resourceToken,
-    redirectUri,
-    preferredCountryCode,
-    environment,
+    paymentId: readString(source, ['paymentId', 'payment_id', 'id']),
+    resourceToken: readString(source, ['resourceToken', 'resource_token']),
+    redirectUri: readString(source, ['redirectUri', 'redirect_uri', 'redirectReturnUri']),
+    preferredCountryCode: readString(source, ['preferredCountryCode', 'preferred_country_code']),
+    environment: source.environment != null ? getEnvironment(source.environment) : undefined,
+    paymentRequestId: readString(source, ['paymentRequestId', 'payment_request_id']),
   };
 }
 
-export function buildTrueLayerRedirectUri(): string {
-  return `${config.trueLayerRedirectScheme}://checkout/truelayer-return`;
-}
 
-export function isTrueLayerRedirectUrl(url: string | null | undefined): boolean {
-  if (!url) return false;
-  return url.startsWith(buildTrueLayerRedirectUri());
-}
+async function createPaymentRequest({
+  token,
+  amount,
+  merchantName,
+  invoiceId,
+  user,
+}: PaymentRequestParams): Promise<PaymentInitResponse> {
+  const redirectUri = getRedirectUri();
+  const hasToken = Boolean(token);
 
-export async function createTrueLayerPayment(
-  input: CreateTrueLayerPaymentInput,
-): Promise<PaymentRequestResponse> {
-  const response = await fetch(config.trueLayerPaymentRequestUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(input.accessToken ? { Authorization: `Bearer ${input.accessToken}` } : {}),
-    },
-    body: JSON.stringify({
-      amount: Number(input.amount.toFixed(2)),
-      amountInMinor: Math.round(input.amount * 100),
-      currency: input.currency ?? 'EUR',
-      invoiceId: input.invoiceId,
-      merchantName: input.merchantName,
-      paymentProvider: 'truelayer',
-      provider: 'truelayer',
-      platform: Platform.OS,
-      source: 'mobile-app',
-      redirectUri: input.redirectUri,
-      returnUri: input.redirectUri,
-    }),
+  const paymentRequestId = generateUuid();
+  const orderId = invoiceId ?? `order_${paymentRequestId}`;
+  const userDisplayName = user?.name ?? user?.email ?? 'BlitzPay Customer';
+
+  const amountMinorUnits = Math.round(amount * 100);
+  const requestBody = {
+    paymentRequestId,
+    orderId,
+    amountMinorUnits,
+    currency: 'GBP',
+    userDisplayName,
+    redirectReturnUri: redirectUri,
+  };
+
+  observability.info('truelayer_payment_request_started', {
+    url: config.trueLayerPaymentsUrl,
+    paymentRequestId,
+    orderId,
+    amount,
+    amountMinorUnits,
+    currency: requestBody.currency,
+    userDisplayName,
+    redirectReturnUri: redirectUri,
+    hasToken,
+    platform: Platform.OS,
+    requestBody: JSON.stringify(requestBody),
   });
 
-  const payload = await parseResponseBody(response);
+  let response: Response;
+  try {
+    response = await fetch(config.trueLayerPaymentsUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(requestBody),
+    });
+  } catch (networkError) {
+    observability.error(
+      'truelayer_payment_request_network_error',
+      {
+        url: config.trueLayerPaymentsUrl,
+        message: networkError instanceof Error ? networkError.message : String(networkError),
+      },
+      networkError instanceof Error ? networkError : undefined
+    );
+    throw new Error('truelayer_request_failed');
+  }
 
   if (!response.ok) {
-    const message = typeof payload === 'string'
-      ? payload
-      : readString(asRecord(payload), ['message', 'error', 'detail']) ?? `HTTP ${response.status}`;
-    throw new Error(message);
+    const bodySnippet = await response
+      .text()
+      .then((text) => text.slice(0, 4000))
+      .catch(() => '');
+    observability.error('truelayer_payment_request_failed', {
+      status: response.status,
+      url: config.trueLayerPaymentsUrl,
+      paymentRequestId,
+      orderId,
+      requestBody: JSON.stringify(requestBody),
+      body: bodySnippet,
+    });
+    throw new Error(response.status === 401 ? 'session_expired' : 'truelayer_request_failed');
   }
 
-  return parsePaymentResponse(payload, input.redirectUri);
+  const payload = (await response.json().catch((err) => {
+    observability.warn('truelayer_payment_response_parse_failed', {
+      message: err instanceof Error ? err.message : String(err),
+    });
+    return {};
+  })) as PaymentApiResponse;
+
+  const context = extractPaymentContext(payload);
+  observability.info('truelayer_payment_request_response_received', {
+    paymentRequestId: context.paymentRequestId ?? paymentRequestId,
+    hasPaymentId: Boolean(context.paymentId),
+    hasResourceToken: Boolean(context.resourceToken),
+    payloadKeys: Object.keys(payload ?? {}).join(','),
+  });
+
+  if (!context.paymentId || !context.resourceToken) {
+    observability.error('truelayer_invalid_response', {
+      paymentRequestId: context.paymentRequestId ?? paymentRequestId,
+      hasPaymentId: Boolean(context.paymentId),
+      hasResourceToken: Boolean(context.resourceToken),
+      payloadKeys: Object.keys(payload ?? {}).join(','),
+      hint: 'Backend must return paymentId and resourceToken in POST /v1/payments/request response.',
+    });
+    throw new Error('truelayer_invalid_response');
+  }
+
+  const normalized: PaymentInitResponse = {
+    paymentId: context.paymentId,
+    resourceToken: context.resourceToken,
+    redirectUri: context.redirectUri ?? redirectUri,
+    preferredCountryCode: context.preferredCountryCode ?? config.trueLayerPreferredCountryCode,
+    environment: context.environment ?? getEnvironment(config.trueLayerEnvironment),
+  };
+
+  observability.info('truelayer_payment_request_succeeded', {
+    paymentId: normalized.paymentId,
+    environment: String(normalized.environment),
+    redirectUri: normalized.redirectUri,
+    preferredCountryCode: normalized.preferredCountryCode ?? null,
+  });
+  return normalized;
 }
 
-export async function saveActiveTrueLayerPayment(context: TrueLayerPaymentContext): Promise<void> {
-  await storage.setItem(ACTIVE_PAYMENT_STORAGE_KEY, JSON.stringify(context));
+function normalizeResult(result: TrueLayerResult, context: { paymentId: string; redirectUri: string }): void {
+  const rawReason = result.reason ?? '';
+  if (result.type === ResultType.Success) {
+    observability.info('truelayer_sdk_result_success', {
+      paymentId: context.paymentId,
+    });
+    return;
+  }
+
+  const reason = rawReason.toLowerCase();
+  if (reason.includes('cancel')) {
+    observability.warn('truelayer_sdk_result_cancelled', {
+      paymentId: context.paymentId,
+      reason: rawReason,
+    });
+    throw new Error('truelayer_cancelled');
+  }
+
+  observability.error('truelayer_sdk_result_failed', {
+    paymentId: context.paymentId,
+    resultType: String(result.type),
+    reason: rawReason,
+    redirectUri: context.redirectUri,
+  });
+  throw new Error('truelayer_failed');
 }
 
-export async function getActiveTrueLayerPayment(): Promise<TrueLayerPaymentContext | null> {
-  const raw = await storage.getItem(ACTIVE_PAYMENT_STORAGE_KEY);
-  if (!raw) return null;
+export async function startTrueLayerPayment(params: PaymentRequestParams): Promise<void> {
+  if (Platform.OS === 'web') {
+    observability.warn('truelayer_unsupported_platform', { platform: Platform.OS });
+    throw new Error('truelayer_unsupported_platform');
+  }
+
+  const context = await createPaymentRequest(params);
 
   try {
-    return JSON.parse(raw) as TrueLayerPaymentContext;
-  } catch {
-    await storage.deleteItem(ACTIVE_PAYMENT_STORAGE_KEY);
-    return null;
+    observability.debug('truelayer_sdk_configure_started', {
+      environment: String(context.environment),
+    });
+    await TrueLayerPaymentsSDKWrapper.configure(context.environment);
+  } catch (err) {
+    observability.error(
+      'truelayer_sdk_configure_failed',
+      {
+        environment: String(context.environment),
+        message: err instanceof Error ? err.message : String(err),
+      },
+      err instanceof Error ? err : undefined
+    );
+    throw new Error('truelayer_failed');
   }
-}
 
-export async function clearActiveTrueLayerPayment(): Promise<void> {
-  await storage.deleteItem(ACTIVE_PAYMENT_STORAGE_KEY);
-}
+  observability.info('truelayer_sdk_process_payment_started', {
+    paymentId: context.paymentId,
+    environment: String(context.environment),
+    redirectUri: context.redirectUri,
+    preferredCountryCode: context.preferredCountryCode ?? null,
+  });
 
-export async function savePendingTrueLayerReturnUrl(url: string): Promise<void> {
-  await storage.setItem(PENDING_RETURN_URL_STORAGE_KEY, url);
-}
-
-export async function consumePendingTrueLayerReturnUrl(): Promise<string | null> {
-  const url = await storage.getItem(PENDING_RETURN_URL_STORAGE_KEY);
-  if (url) {
-    await storage.deleteItem(PENDING_RETURN_URL_STORAGE_KEY);
+  let result: TrueLayerResult;
+  try {
+    result = await TrueLayerPaymentsSDKWrapper.processPayment(
+      {
+        paymentId: context.paymentId,
+        resourceToken: context.resourceToken,
+        redirectUri: context.redirectUri,
+      },
+      {
+        shouldPresentResultScreen: true,
+        preferredCountryCode: context.preferredCountryCode,
+      }
+    );
+  } catch (err) {
+    observability.error(
+      'truelayer_sdk_process_payment_threw',
+      {
+        paymentId: context.paymentId,
+        redirectUri: context.redirectUri,
+        message: err instanceof Error ? err.message : String(err),
+      },
+      err instanceof Error ? err : undefined
+    );
+    throw new Error('truelayer_failed');
   }
-  return url;
+
+  normalizeResult(result, { paymentId: context.paymentId, redirectUri: context.redirectUri });
 }
