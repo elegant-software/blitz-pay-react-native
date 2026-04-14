@@ -13,6 +13,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 import { useLanguage } from '../lib/LanguageContext';
+import { useAuth } from '../lib/auth';
+import { startTrueLayerPayment } from '../lib/truelayer';
+import { observability } from '../lib/observability';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import type { RootStackNav, RootStackParamList } from '../types';
 
@@ -20,26 +23,71 @@ type PaymentMethod = 'bank' | 'card' | 'paypal';
 
 export default function CheckoutScreen() {
   const { t } = useLanguage();
+  const { token, user } = useAuth();
   const navigation = useNavigation<RootStackNav>();
   const route = useRoute<RouteProp<RootStackParamList, 'Checkout'>>();
   const insets = useSafeAreaInsets();
 
   const amount = route.params?.amount ?? 24.5;
   const merchantName = route.params?.merchantName ?? 'Merchant';
+  const invoiceId = route.params?.invoiceId;
 
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>('bank');
   const [processing, setProcessing] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [error, setError] = useState('');
 
   const handleConfirm = async () => {
+    setError('');
     setProcessing(true);
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    // Simulate processing delay
-    setTimeout(() => {
-      setProcessing(false);
+
+    observability.info('checkout_confirm_started', {
+      method: selectedMethod,
+      amount,
+      merchantName,
+      invoiceId: invoiceId ?? null,
+    });
+
+    try {
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+      if (selectedMethod === 'bank') {
+        await startTrueLayerPayment({
+          token,
+          amount,
+          merchantName,
+          invoiceId,
+          user,
+        });
+      } else {
+        await new Promise((resolve) => setTimeout(resolve, 1800));
+      }
+
+      observability.info('checkout_confirm_succeeded', {
+        method: selectedMethod,
+        amount,
+        invoiceId: invoiceId ?? null,
+      });
       setShowSuccess(true);
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    }, 1800);
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (err) {
+      const key = err instanceof Error ? err.message : 'truelayer_failed';
+      observability.error(
+        'checkout_confirm_failed',
+        {
+          method: selectedMethod,
+          amount,
+          invoiceId: invoiceId ?? null,
+          reasonKey: key,
+          message: err instanceof Error ? err.message : String(err),
+        },
+        err instanceof Error ? err : undefined
+      );
+      setError(t(key as Parameters<typeof t>[0]));
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      setProcessing(false);
+    }
   };
 
   const handleContinue = () => {
@@ -119,12 +167,21 @@ export default function CheckoutScreen() {
           ))}
         </View>
 
+        {error ? (
+          <View style={styles.errorBox}>
+            <Ionicons name="alert-circle-outline" size={16} color={colors.error} />
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        ) : null}
+
         {/* Security note */}
         <View style={styles.securityNote}>
           <Ionicons name="shield-checkmark-outline" size={16} color={colors.success} />
           <View style={styles.securityTextBox}>
             <Text style={styles.securityTitle}>{t('encrypted_transaction')}</Text>
-            <Text style={styles.securityDesc}>{t('secure_msg')}</Text>
+            <Text style={styles.securityDesc}>
+              {selectedMethod === 'bank' ? t('truelayer_secure_checkout') : t('secure_msg')}
+            </Text>
           </View>
         </View>
       </ScrollView>
@@ -143,10 +200,13 @@ export default function CheckoutScreen() {
           ) : (
             <>
               <Ionicons name="flash" size={18} color={colors.black} />
-              <Text style={styles.confirmBtnText}>{t('confirm_payment')} · €{amount.toFixed(2)}</Text>
+              <Text style={styles.confirmBtnText}>
+                {(selectedMethod === 'bank' ? t('pay_with_truelayer') : t('confirm_payment'))} · €{amount.toFixed(2)}
+              </Text>
             </>
           )}
         </TouchableOpacity>
+        {processing ? <Text style={styles.processingText}>{t('processing_payment')}</Text> : null}
       </View>
 
       {/* Success modal */}
@@ -263,6 +323,24 @@ const styles = StyleSheet.create({
   securityTextBox: { flex: 1 },
   securityTitle: { fontSize: 13, fontWeight: '600', color: colors.onSurface, marginBottom: 2 },
   securityDesc: { fontSize: 12, color: colors.gray600, lineHeight: 16 },
+  errorBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    borderColor: `${colors.error}30`,
+    backgroundColor: `${colors.error}10`,
+  },
+  errorText: {
+    flex: 1,
+    fontSize: 13,
+    color: colors.error,
+    lineHeight: 18,
+  },
   bottomBar: {
     padding: spacing.md,
     backgroundColor: colors.background,
@@ -286,6 +364,12 @@ const styles = StyleSheet.create({
   },
   confirmBtnDisabled: { opacity: 0.7 },
   confirmBtnText: { fontSize: 16, fontWeight: '700', color: colors.black },
+  processingText: {
+    marginTop: spacing.sm,
+    fontSize: 12,
+    color: colors.gray600,
+    textAlign: 'center',
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.7)',
