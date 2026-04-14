@@ -8,6 +8,11 @@ import { LanguageProvider } from './src/lib/LanguageContext';
 import AppNavigator from './src/navigation/AppNavigator';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import { initObservability } from './src/lib/observability';
+import { config } from './src/lib/config';
+
+const linking = {
+  prefixes: [`${config.trueLayerRedirectScheme}://`],
+};
 
 export default function App() {
   useEffect(() => {
@@ -20,7 +25,7 @@ export default function App() {
         <ErrorBoundary>
           <LanguageProvider>
             <AuthProvider>
-              <NavigationContainer>
+              <NavigationContainer linking={linking}>
                 <StatusBar style="dark" />
                 <AppNavigator />
               </NavigationContainer>
