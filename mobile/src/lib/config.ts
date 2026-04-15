@@ -22,7 +22,7 @@ export const config = {
   trueLayerRedirectScheme: process.env.EXPO_PUBLIC_TRUELAYER_REDIRECT_SCHEME ?? 'blitzpay',
   trueLayerRedirectHost: process.env.EXPO_PUBLIC_TRUELAYER_REDIRECT_HOST ?? 'payments',
   trueLayerRedirectPath: process.env.EXPO_PUBLIC_TRUELAYER_REDIRECT_PATH ?? 'truelayer',
-  trueLayerPreferredCountryCode: process.env.EXPO_PUBLIC_TRUELAYER_COUNTRY_CODE ?? 'DE',
+  trueLayerPreferredCountryCode: process.env.EXPO_PUBLIC_TRUELAYER_COUNTRY_CODE ?? 'GB',
   observabilityEnabled: parseBoolean(process.env.EXPO_PUBLIC_OBSERVABILITY_ENABLED, false),
   observabilityEnvironment: process.env.EXPO_PUBLIC_OBSERVABILITY_ENVIRONMENT ?? 'development',
   observabilityServiceName: process.env.EXPO_PUBLIC_OBSERVABILITY_SERVICE_NAME ?? 'blitzpay-mobile',
