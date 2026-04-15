@@ -15,6 +15,11 @@ export const config = {
   keycloakClientId: process.env.EXPO_PUBLIC_KEYCLOAK_CLIENT_ID ?? 'blitzpay-spa',
   authBypass: process.env.EXPO_PUBLIC_AUTH_BYPASS === 'true',
   apiUrl: process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3001',
+  trueLayerPaymentRequestUrl:
+    process.env.EXPO_PUBLIC_TRUELAYER_PAYMENT_REQUEST_URL
+    ?? 'https://api-blitzpay-staging.elegantsoftware.de/v1/payments/request',
+  trueLayerRedirectScheme: process.env.EXPO_PUBLIC_TRUELAYER_REDIRECT_SCHEME ?? 'blitzpay',
+  trueLayerEnvironment: process.env.EXPO_PUBLIC_TRUELAYER_ENVIRONMENT ?? 'sandbox',
   observabilityEnabled: parseBoolean(process.env.EXPO_PUBLIC_OBSERVABILITY_ENABLED, false),
   observabilityEnvironment: process.env.EXPO_PUBLIC_OBSERVABILITY_ENVIRONMENT ?? 'development',
   observabilityServiceName: process.env.EXPO_PUBLIC_OBSERVABILITY_SERVICE_NAME ?? 'blitzpay-mobile',
