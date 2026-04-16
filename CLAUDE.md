@@ -119,5 +119,10 @@ All 13 screens from the web prototype are present in `mobile/src/screens/`.
 Set `EXPO_PUBLIC_AUTH_BYPASS=true` in `mobile/.env` to skip Keycloak entirely.
 
 ## Recent Changes
+- 004-payment-result-notification: Added TypeScript 5.x, React Native 0.76 (Expo SDK 52) + `expo-notifications` (push registration + listeners), `expo-secure-store` (persist in-flight payment ids), native `fetch` (status polling — matches existing auth code), React Navigation v6 (deep-link to result screen)
 - 001-keycloak-auth-login: Added Keycloak ROPC auth, biometric enrollment, Express /api/register proxy
 - 002-react-native-migration: Added `/mobile` Expo app with all 13 screens, React Navigation, native auth, QR scanner/display, EN/DE i18n
+
+## Active Technologies
+- TypeScript 5.x, React Native 0.76 (Expo SDK 52) + `expo-notifications` (push registration + listeners), `expo-secure-store` (persist in-flight payment ids), native `fetch` (status polling — matches existing auth code), React Navigation v6 (deep-link to result screen) (004-payment-result-notification)
+- `expo-secure-store` for in-flight payment records (survives app kill); in-memory map for the active polling controller per `paymentRequestId` (004-payment-result-notification)

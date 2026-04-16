@@ -7,6 +7,7 @@ import {
 } from 'rn-truelayer-payments-sdk';
 import { config } from './config';
 import { observability } from './observability';
+import { resolveFailureReasonKey } from './payments/failureReasons';
 
 type PaymentRequestParams = {
   token: string | null;
@@ -20,13 +21,14 @@ type PaymentRequestParams = {
   } | null;
 };
 
-type PaymentInitResponse = {
+export interface TrueLayerPaymentContext {
   paymentId: string;
+  paymentRequestId: string;
   resourceToken: string;
   redirectUri: string;
   environment: Environment;
   preferredCountryCode?: string;
-};
+}
 
 type PaymentApiResponse = Record<string, unknown>;
 
@@ -83,13 +85,13 @@ function extractPaymentContext(payload: PaymentApiResponse): {
 }
 
 
-async function createPaymentRequest({
+export async function createTrueLayerPayment({
   token,
   amount,
   merchantName,
   invoiceId,
   user,
-}: PaymentRequestParams): Promise<PaymentInitResponse> {
+}: PaymentRequestParams): Promise<TrueLayerPaymentContext> {
   const redirectUri = getRedirectUri();
   const hasToken = Boolean(token);
 
@@ -185,8 +187,9 @@ async function createPaymentRequest({
     throw new Error('truelayer_invalid_response');
   }
 
-  const normalized: PaymentInitResponse = {
+  const normalized: TrueLayerPaymentContext = {
     paymentId: context.paymentId,
+    paymentRequestId: context.paymentRequestId ?? paymentRequestId,
     resourceToken: context.resourceToken,
     redirectUri: context.redirectUri ?? redirectUri,
     preferredCountryCode: context.preferredCountryCode ?? config.trueLayerPreferredCountryCode,
@@ -211,8 +214,8 @@ function normalizeResult(result: TrueLayerResult, context: { paymentId: string; 
     return;
   }
 
-  const reason = rawReason.toLowerCase();
-  if (reason.includes('cancel')) {
+  const bucket = resolveFailureReasonKey(rawReason);
+  if (bucket === 'truelayer_cancelled') {
     observability.warn('truelayer_sdk_result_cancelled', {
       paymentId: context.paymentId,
       reason: rawReason,
@@ -224,18 +227,17 @@ function normalizeResult(result: TrueLayerResult, context: { paymentId: string; 
     paymentId: context.paymentId,
     resultType: String(result.type),
     reason: rawReason,
+    bucket: bucket ?? 'truelayer_reason_unknown',
     redirectUri: context.redirectUri,
   });
-  throw new Error('truelayer_failed');
+  throw new Error(bucket ?? 'truelayer_reason_unknown');
 }
 
-export async function startTrueLayerPayment(params: PaymentRequestParams): Promise<void> {
+export async function runTrueLayerSdk(context: TrueLayerPaymentContext): Promise<void> {
   if (Platform.OS === 'web') {
     observability.warn('truelayer_unsupported_platform', { platform: Platform.OS });
     throw new Error('truelayer_unsupported_platform');
   }
-
-  const context = await createPaymentRequest(params);
 
   try {
     observability.debug('truelayer_sdk_configure_started', {
@@ -251,7 +253,7 @@ export async function startTrueLayerPayment(params: PaymentRequestParams): Promi
       },
       err instanceof Error ? err : undefined
     );
-    throw new Error('truelayer_failed');
+    throw new Error('truelayer_reason_configuration');
   }
 
   observability.info('truelayer_sdk_process_payment_started', {
@@ -284,7 +286,7 @@ export async function startTrueLayerPayment(params: PaymentRequestParams): Promi
       },
       err instanceof Error ? err : undefined
     );
-    throw new Error('truelayer_failed');
+    throw new Error('truelayer_reason_unknown');
   }
 
   normalizeResult(result, { paymentId: context.paymentId, redirectUri: context.redirectUri });
