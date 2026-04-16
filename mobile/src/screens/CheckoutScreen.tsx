@@ -14,7 +14,10 @@ import { useNavigation, useRoute, type RouteProp } from '@react-navigation/nativ
 import * as Haptics from 'expo-haptics';
 import { useLanguage } from '../lib/LanguageContext';
 import { useAuth } from '../lib/auth';
-import { startTrueLayerPayment } from '../lib/truelayer';
+import { createTrueLayerPayment, runTrueLayerSdk } from '../lib/truelayer';
+import { paymentResultTracker } from '../lib/payments/paymentResultTracker';
+import { resolveFailureReasonKey } from '../lib/payments/failureReasons';
+import { registerDeviceForPayment } from '../lib/notifications/pushRegistration';
 import { observability } from '../lib/observability';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import type { RootStackNav, RootStackParamList } from '../types';
@@ -52,16 +55,52 @@ export default function CheckoutScreen() {
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
       if (selectedMethod === 'bank') {
-        await startTrueLayerPayment({
+        const context = await createTrueLayerPayment({
           token,
           amount,
           merchantName,
           invoiceId,
           user,
         });
-      } else {
-        await new Promise((resolve) => setTimeout(resolve, 1800));
+        const { paymentRequestId } = context;
+
+        // Register for push and arm the poller BEFORE handing off to the SDK,
+        // so the backend can reach us regardless of how the SDK flow ends.
+        void registerDeviceForPayment(paymentRequestId);
+        void paymentResultTracker.start(paymentRequestId);
+
+        observability.info('checkout_confirm_succeeded', {
+          method: selectedMethod,
+          amount,
+          invoiceId: invoiceId ?? null,
+          paymentRequestId,
+        });
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        navigation.replace('PaymentProcessing', {
+          paymentRequestId,
+          amount,
+          currency: 'EUR',
+          merchantName,
+          invoiceId,
+        });
+
+        // Fire the SDK after navigation. The tracker is the source of truth for
+        // the outcome; an SDK cancellation is fed back as a recovered result so
+        // the user lands on the result screen without waiting for the timeout.
+        void runTrueLayerSdk(context).catch((err) => {
+          const key = err instanceof Error ? err.message : 'truelayer_reason_unknown';
+          if (key === 'truelayer_cancelled' || resolveFailureReasonKey(key) === 'truelayer_cancelled') {
+            paymentResultTracker.applyRecoveredResult({
+              paymentRequestId,
+              status: 'cancelled',
+              reason: 'UserAborted',
+            });
+          }
+        });
+        return;
       }
+
+      await new Promise((resolve) => setTimeout(resolve, 1800));
 
       observability.info('checkout_confirm_succeeded', {
         method: selectedMethod,
@@ -71,7 +110,7 @@ export default function CheckoutScreen() {
       setShowSuccess(true);
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (err) {
-      const key = err instanceof Error ? err.message : 'truelayer_failed';
+      const key = err instanceof Error ? err.message : 'truelayer_reason_unknown';
       observability.error(
         'checkout_confirm_failed',
         {

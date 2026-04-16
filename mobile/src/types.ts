@@ -12,6 +12,27 @@ export type RootStackParamList = {
   Invoices: undefined;
   SendInvoice: undefined;
   Notifications: undefined;
+  PaymentProcessing: {
+    paymentRequestId: string;
+    amount?: number;
+    currency?: string;
+    merchantName?: string;
+    invoiceId?: string;
+  };
+  PaymentResult: {
+    paymentRequestId: string;
+    status: 'succeeded' | 'failed' | 'cancelled';
+    amount?: number;
+    currency?: string;
+    merchantName?: string;
+    reason?: string;
+  };
+  PaymentPending: {
+    paymentRequestId: string;
+    amount?: number;
+    currency?: string;
+    merchantName?: string;
+  };
 };
 
 export type TabParamList = {

@@ -21,7 +21,10 @@
       "bundleIdentifier": "app.blitzpay.mobile",
       "infoPlist": {
         "NSCameraUsageDescription": "Used to scan QR codes for payments",
-        "NSFaceIDUsageDescription": "Used for biometric authentication"
+        "NSFaceIDUsageDescription": "Used for biometric authentication",
+        "UIBackgroundModes": [
+          "remote-notification"
+        ]
       }
     },
     "android": {
@@ -34,6 +37,7 @@
         "resizeMode": "contain"
       },
       "package": "app.blitzpay.mobile",
+      "googleServicesFile": "./google-services.json",
       "permissions": [
         "CAMERA",
         "USE_BIOMETRIC",
@@ -85,6 +89,12 @@
         }
       ],
       "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "sounds": []
+        }
+      ],
       [
         "./plugins/withNdkVersion",
         "30.0.14904198"
