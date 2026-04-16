@@ -15,6 +15,9 @@ import QRScannerScreen from '../screens/QRScannerScreen';
 import InvoicesScreen from '../screens/InvoicesScreen';
 import SendInvoiceScreen from '../screens/SendInvoiceScreen';
 import NotificationsScreen from '../screens/NotificationsScreen';
+import PaymentProcessingScreen from '../screens/PaymentProcessingScreen';
+import PaymentResultScreen from '../screens/PaymentResultScreen';
+import PaymentPendingScreen from '../screens/PaymentPendingScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -46,6 +49,21 @@ export default function AppNavigator() {
           <Stack.Screen name="Invoices" component={InvoicesScreen} />
           <Stack.Screen name="SendInvoice" component={SendInvoiceScreen} />
           <Stack.Screen name="Notifications" component={NotificationsScreen} />
+          <Stack.Screen
+            name="PaymentProcessing"
+            component={PaymentProcessingScreen}
+            options={{ gestureEnabled: false }}
+          />
+          <Stack.Screen
+            name="PaymentResult"
+            component={PaymentResultScreen}
+            options={{ gestureEnabled: false }}
+          />
+          <Stack.Screen
+            name="PaymentPending"
+            component={PaymentPendingScreen}
+            options={{ gestureEnabled: false }}
+          />
         </>
       )}
     </Stack.Navigator>
