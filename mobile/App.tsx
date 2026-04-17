@@ -9,6 +9,8 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from './src/lib/auth';
 import { LanguageProvider } from './src/lib/LanguageContext';
+import { StripeProvider } from '@stripe/stripe-react-native';
+import SplashScreen from './src/components/SplashScreen';
 import AppNavigator from './src/navigation/AppNavigator';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import { initObservability } from './src/lib/observability';
@@ -46,6 +48,8 @@ function PostAuthEffects() {
 }
 
 export default function App() {
+  const [splashVisible, setSplashVisible] = React.useState(true);
+
   useEffect(() => {
     initObservability();
     void ensurePaymentsChannel();
@@ -56,19 +60,28 @@ export default function App() {
       <SafeAreaProvider>
         <ErrorBoundary>
           <LanguageProvider>
-            <AuthProvider>
-              <NavigationContainer
-                ref={navigationRef}
-                linking={linking}
-                onReady={() => {
-                  initPushHandlers(navigationRef);
-                }}
-              >
-                <StatusBar style="dark" />
-                <PostAuthEffects />
-                <AppNavigator />
-              </NavigationContainer>
-            </AuthProvider>
+            <StripeProvider
+              publishableKey={config.stripePublishableKey}
+              urlScheme={config.trueLayerRedirectScheme} // "blitzpay"
+              merchantIdentifier="merchant.app.blitzpay.mobile"
+            >
+              {splashVisible && (
+                <SplashScreen onComplete={() => setSplashVisible(false)} />
+              )}
+              <AuthProvider>
+                <NavigationContainer
+                  ref={navigationRef}
+                  linking={linking}
+                  onReady={() => {
+                    initPushHandlers(navigationRef);
+                  }}
+                >
+                  <StatusBar style="dark" />
+                  <PostAuthEffects />
+                  <AppNavigator />
+                </NavigationContainer>
+              </AuthProvider>
+            </StripeProvider>
           </LanguageProvider>
         </ErrorBoundary>
       </SafeAreaProvider>

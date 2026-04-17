@@ -20,7 +20,7 @@
       "supportsTablet": false,
       "bundleIdentifier": "app.blitzpay.mobile",
       "infoPlist": {
-        "NSCameraUsageDescription": "Used to scan QR codes for payments",
+        "NSCameraUsageDescription": "Used to scan QR codes and credit cards for payments",
         "NSFaceIDUsageDescription": "Used for biometric authentication",
         "UIBackgroundModes": [
           "remote-notification"
@@ -49,6 +49,13 @@
       ]
     },
     "plugins": [
+      [
+        "@stripe/stripe-react-native",
+        {
+          "merchantIdentifier": "merchant.app.blitzpay.mobile",
+          "enableGooglePay": true
+        }
+      ],
       [
         "expo-build-properties",
         {

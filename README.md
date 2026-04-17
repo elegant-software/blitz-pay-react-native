@@ -123,6 +123,16 @@ Use `mobile/.env.example` as the template. Populate these keys for the mobile ex
 - `EXPO_PUBLIC_OBSERVABILITY_INGEST_PATH`: Backend ingestion path (`/api/observability/mobile-logs` by default).
 - `EXPO_PUBLIC_OBSERVABILITY_SAMPLE_RATE`: 0..1 sampling applied before queueing logs on device.
 - `EXPO_PUBLIC_OBSERVABILITY_CAPTURE_CONSOLE`: Whether `console.warn`/`console.error` are captured automatically.
+- `EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY`: Your Stripe publishable key (starts with `pk_`).
+
+## Stripe Testing (Mobile)
+
+1.  **Dependencies**: The Stripe SDK requires native code. You **must** use a real device or a simulator running a development build (`npx expo run:ios` or `android`). It will not work in the standard Expo Go app.
+2.  **Test Cards**:
+    - **Success**: `4242 4242 4242 4242`
+    - **3D Secure (SCA)**: `4000 0027 6000 3184` (use any CVC and future expiry)
+3.  **Card Scanning**: On iOS, tap the scan icon in the card entry field to test camera-based scanning.
+4.  **Deep Linking**: The `blitzpay://` scheme is used to handle 3D Secure redirects back to the app.
 
 ## OpenTelemetry Logs to Grafana (Android + iOS)
 
