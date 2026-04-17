@@ -19,6 +19,8 @@ import { paymentResultTracker } from '../lib/payments/paymentResultTracker';
 import { resolveFailureReasonKey } from '../lib/payments/failureReasons';
 import { registerDeviceForPayment } from '../lib/notifications/pushRegistration';
 import { observability } from '../lib/observability';
+import { useStripePayment } from '../hooks/useStripePayment';
+import { mockCreatePaymentIntent } from '../lib/api/paymentMocks';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import type { RootStackNav, RootStackParamList } from '../types';
 
@@ -34,6 +36,8 @@ export default function CheckoutScreen() {
   const amount = route.params?.amount ?? 24.5;
   const merchantName = route.params?.merchantName ?? 'Merchant';
   const invoiceId = route.params?.invoiceId;
+
+  const { initializePayment, openPaymentSheet } = useStripePayment();
 
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>('bank');
   const [processing, setProcessing] = useState(false);
@@ -100,6 +104,29 @@ export default function CheckoutScreen() {
         return;
       }
 
+      if (selectedMethod === 'card') {
+        const stripeParams = await mockCreatePaymentIntent({ amount, currency: 'EUR' });
+        await initializePayment(stripeParams);
+        const result = await openPaymentSheet();
+
+        if (result.status === 'succeeded') {
+          observability.info('checkout_confirm_succeeded', {
+            method: selectedMethod,
+            amount,
+            invoiceId: invoiceId ?? null,
+          });
+          setShowSuccess(true);
+          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        } else if (result.status === 'failed') {
+          setError(result.error || 'Payment failed');
+          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        } else {
+          // cancelled
+          setProcessing(false);
+        }
+        return;
+      }
+
       await new Promise((resolve) => setTimeout(resolve, 1800));
 
       observability.info('checkout_confirm_succeeded', {
@@ -125,7 +152,9 @@ export default function CheckoutScreen() {
       setError(t(key as Parameters<typeof t>[0]));
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {
-      setProcessing(false);
+      if (selectedMethod !== 'card' || (selectedMethod === 'card' && !showSuccess)) {
+        setProcessing(false);
+      }
     }
   };
 
