@@ -1,16 +1,37 @@
 import { StripeParams } from '../../services/stripe';
+import { config } from '../config';
 
 export const mockCreatePaymentIntent = async (params: {
   amount: number;
   currency: string;
 }): Promise<StripeParams> => {
-  // Simulate API delay
-  await new Promise((resolve) => setTimeout(resolve, 1000));
+  const url = `${config.apiUrl}/api/payments/create-intent`;
+  console.log(`[Stripe] Calling backend at: ${url}`);
+  
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(params),
+    });
 
-  return {
-    paymentIntent: 'pi_mock_secret_' + Math.random().toString(36).substring(7),
-    ephemeralKey: 'ek_mock_secret_' + Math.random().toString(36).substring(7),
-    customer: 'cus_mock_' + Math.random().toString(36).substring(7),
-    publishableKey: 'pk_test_mock',
-  };
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[Stripe] Backend error (${response.status}):`, errorText);
+      throw new Error(`Server returned ${response.status}: ${errorText}`);
+    }
+
+    const data = await response.json();
+    return {
+      paymentIntent: data.paymentIntent,
+      ephemeralKey: data.ephemeralKey || '',
+      customer: data.customer || '',
+      publishableKey: data.publishableKey,
+    };
+  } catch (error: any) {
+    console.error('[Stripe] Network or Server Error:', error.message);
+    throw error;
+  }
 };
