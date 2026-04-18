@@ -44,7 +44,9 @@
       "Bash(node -e \"require\\('./app.config.js'\\); console.log\\('app.config OK'\\)\")",
       "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(json.dumps\\({k:v for k,v in {**d.get\\('dependencies',{}\\), **d.get\\('devDependencies',{}\\)}.items\\(\\)}, indent=2\\)\\)\")",
       "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d.get\\('expo',{}\\).get\\('plugins',[]\\), indent=2\\)\\)\")",
-      "Bash(bash *)"
+      "Bash(bash *)",
+      "Bash(git -C /Users/mehdi/MyProject/blitz-pay-prototype log --oneline main..HEAD)",
+      "Bash(git *)"
     ]
   }
 }

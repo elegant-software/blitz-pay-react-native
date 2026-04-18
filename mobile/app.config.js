@@ -54,21 +54,13 @@ module.exports = {
               pickFirst: ["META-INF/LICENSE-MIT"],
               exclude: ["META-INF/AL2.0", "META-INF/LGPL2.1"],
             },
-            extraMavenRepos: [
-              {
-                url: "https://cardinalcommerceprod.jfrog.io/artifactory/android",
-                credentials: {
-                  username: process.env.BRAINTREE_MAVEN_USERNAME,
-                  password: process.env.BRAINTREE_MAVEN_PASSWORD,
-                },
-              },
-            ],
           },
           ios: {
             deploymentTarget: "15.1",
           },
         },
       ],
+      "./plugins/withBraintreeMavenRepo",
       ["expo-splash-screen", { backgroundColor: "#000000" }],
       ["expo-camera", { cameraPermission: "Allow BlitzPay to access your camera to scan QR codes." }],
       ["expo-local-authentication", { faceIDPermission: "Allow BlitzPay to use Face ID for authentication." }],

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -12,9 +12,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useLanguage } from '../lib/LanguageContext';
-import { colors, spacing, radius, shadow } from '../lib/theme';
+import { useAuth } from '../lib/auth';
+import { colors, spacing, radius } from '../lib/theme';
+import { generateInvoicePdf } from '../services/invoiceService';
+import type { RootStackNav } from '../types';
+import type { InvoiceFormState, LineItem, TradeParty, BankAccount } from '../types/invoice';
 
-type Step = 'recipients' | 'items' | 'sent';
+type Step = 'recipients' | 'invoice-details' | 'items';
 
 const CONTACTS = [
   { id: '1', name: 'Anna Schmidt', email: 'anna@example.com' },
@@ -23,78 +27,215 @@ const CONTACTS = [
   { id: '4', name: 'Team Berlin', email: 'team@berlin.example.com', isGroup: true, count: 5 },
 ];
 
-interface InvoiceItem {
-  id: string;
-  desc: string;
-  amount: string;
-}
+const today = new Date().toISOString().split('T')[0];
+const dueDefault = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+const emptyParty = (): TradeParty => ({ name: '', street: '', zip: '', city: '', country: '', vatId: '' });
+const emptyBank = (): BankAccount => ({ bankName: '', iban: '', bic: '' });
+const newLineItem = (): LineItem => ({
+  id: Date.now().toString(),
+  description: '',
+  quantity: '',
+  unitPrice: '',
+  vatPercent: '19',
+});
 
 export default function SendInvoiceScreen() {
   const { t } = useLanguage();
-  const navigation = useNavigation();
+  const { token } = useAuth();
+  const navigation = useNavigation<RootStackNav>();
   const insets = useSafeAreaInsets();
+  const scrollRef = useRef<ScrollView>(null);
 
   const [step, setStep] = useState<Step>('recipients');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [items, setItems] = useState<InvoiceItem[]>([{ id: '1', desc: '', amount: '' }]);
-  const [sending, setSending] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
-  const toggleContact = (id: string) => {
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-    );
+  const [form, setForm] = useState<InvoiceFormState>({
+    invoiceNumber: `INV-${new Date().getFullYear()}-001`,
+    issueDate: today,
+    dueDate: dueDefault,
+    currency: 'EUR',
+    seller: emptyParty(),
+    buyer: emptyParty(),
+    lineItems: [newLineItem()],
+    bankAccount: emptyBank(),
+    footerText: '',
+  });
+
+  // --- helpers ---
+  const setParty = (party: 'seller' | 'buyer', field: keyof TradeParty, value: string) => {
+    setForm((f) => ({ ...f, [party]: { ...f[party], [field]: value } }));
+    setFieldErrors((e) => { const n = { ...e }; delete n[`${party}.${field}`]; return n; });
   };
 
-  const addItem = () => {
-    setItems((prev) => [...prev, { id: Date.now().toString(), desc: '', amount: '' }]);
+  const setBank = (field: keyof BankAccount, value: string) => {
+    setForm((f) => ({ ...f, bankAccount: { ...f.bankAccount, [field]: value } }));
+    setFieldErrors((e) => { const n = { ...e }; delete n[`bank.${field}`]; return n; });
   };
 
-  const removeItem = (id: string) => {
-    if (items.length > 1) setItems((prev) => prev.filter((i) => i.id !== id));
+  const setLineItem = (id: string, field: keyof LineItem, value: string) => {
+    setForm((f) => ({
+      ...f,
+      lineItems: f.lineItems.map((li) => (li.id === id ? { ...li, [field]: value } : li)),
+    }));
+    setFieldErrors((e) => { const n = { ...e }; delete n[`item.${id}.${field}`]; return n; });
   };
 
-  const updateItem = (id: string, field: 'desc' | 'amount', value: string) => {
-    setItems((prev) => prev.map((i) => (i.id === id ? { ...i, [field]: value } : i)));
+  const addItem = () => setForm((f) => ({ ...f, lineItems: [...f.lineItems, newLineItem()] }));
+  const removeItem = (id: string) =>
+    setForm((f) => ({ ...f, lineItems: f.lineItems.filter((li) => li.id !== id) }));
+
+  const total = form.lineItems.reduce(
+    (sum, li) => sum + (parseFloat(li.quantity) || 0) * (parseFloat(li.unitPrice) || 0),
+    0,
+  );
+
+  // --- validation ---
+  const isValidDate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(Date.parse(s));
+
+  const validateStep2 = (): Record<string, string> => {
+    const errs: Record<string, string> = {};
+    if (!form.invoiceNumber.trim()) errs['invoiceNumber'] = 'field_required';
+    if (!isValidDate(form.issueDate)) errs['issueDate'] = 'invalid_date';
+    if (!isValidDate(form.dueDate)) errs['dueDate'] = 'invalid_date';
+    if (isValidDate(form.issueDate) && isValidDate(form.dueDate) && form.dueDate < form.issueDate)
+      errs['dueDate'] = 'due_before_issue';
+    const partyFields: (keyof TradeParty)[] = ['name', 'street', 'zip', 'city', 'country'];
+    for (const p of ['seller', 'buyer'] as const) {
+      for (const f of partyFields) {
+        if (!form[p][f]?.trim()) errs[`${p}.${f}`] = 'field_required';
+      }
+    }
+    const { bankName, iban, bic } = form.bankAccount;
+    const bankFilled = [bankName, iban, bic].filter((x) => x.trim()).length;
+    if (bankFilled > 0 && bankFilled < 3) errs['bank'] = 'bank_fields_incomplete';
+    return errs;
   };
 
-  const total = items.reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0);
-
-  const handleSend = () => {
-    setSending(true);
-    setTimeout(() => {
-      setSending(false);
-      setStep('sent');
-    }, 1500);
+  const validateStep3 = (): Record<string, string> => {
+    const errs: Record<string, string> = {};
+    form.lineItems.forEach((li) => {
+      if (!li.description.trim()) errs[`item.${li.id}.description`] = 'field_required';
+      const q = parseFloat(li.quantity);
+      if (isNaN(q) || q <= 0) errs[`item.${li.id}.quantity`] = 'invalid_quantity';
+      const p = parseFloat(li.unitPrice);
+      if (isNaN(p) || p <= 0) errs[`item.${li.id}.unitPrice`] = 'invalid_price';
+      const v = parseFloat(li.vatPercent);
+      if (isNaN(v) || v < 0 || v > 100) errs[`item.${li.id}.vatPercent`] = 'invalid_vat';
+    });
+    return errs;
   };
 
-  if (step === 'sent') {
-    return (
-      <View style={[styles.container, styles.centeredContainer, { paddingTop: insets.top }]}>
-        <View style={styles.successSection}>
-          <View style={styles.successIcon}>
-            <Ionicons name="checkmark-circle" size={72} color={colors.success} />
-          </View>
-          <Text style={styles.successTitle}>{t('invoice_sent')}</Text>
-          <Text style={styles.successDesc}>
-            {t('invoice_sent_msg', { amount: `€${total.toFixed(2)}`, count: selectedIds.length })}
-          </Text>
-          <TouchableOpacity
-            style={styles.doneBtn}
-            onPress={() => navigation.goBack()}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.doneBtnText}>Done</Text>
-          </TouchableOpacity>
+  // --- submit ---
+  const handleGenerate = async () => {
+    const errs = validateStep3();
+    if (Object.keys(errs).length > 0) {
+      setFieldErrors(errs);
+      scrollRef.current?.scrollTo({ y: 0, animated: true });
+      return;
+    }
+    setGenerating(true);
+    setError(null);
+    try {
+      const pdf = await generateInvoicePdf(form, token ?? '');
+      navigation.navigate('InvoicePdfPreview', {
+        localUri: pdf.localUri,
+        invoiceNumber: form.invoiceNumber,
+      });
+    } catch (err: unknown) {
+      const key = err instanceof Error ? err.message : 'error_pdf_generation_failed';
+      setError(t(key as Parameters<typeof t>[0]) ?? key);
+      scrollRef.current?.scrollTo({ y: 0, animated: true });
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  // --- nav ---
+  const toggleContact = (id: string) =>
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+
+  const handleBack = () => {
+    if (step === 'items') setStep('invoice-details');
+    else if (step === 'invoice-details') setStep('recipients');
+    else navigation.goBack();
+  };
+
+  const handleContinueFromRecipients = () => {
+    const selected = CONTACTS.find((c) => selectedIds.includes(c.id));
+    if (selected) {
+      setForm((f) => ({
+        ...f,
+        buyer: { ...f.buyer, name: f.buyer.name || selected.name },
+      }));
+    }
+    setStep('invoice-details');
+  };
+
+  // --- field component ---
+  const Field = ({
+    label,
+    value,
+    onChangeText,
+    placeholder,
+    errorKey,
+    keyboard,
+    optional,
+  }: {
+    label: string;
+    value: string;
+    onChangeText: (v: string) => void;
+    placeholder?: string;
+    errorKey?: string;
+    keyboard?: 'default' | 'decimal-pad';
+    optional?: boolean;
+  }) => (
+    <View style={styles.fieldWrap}>
+      <Text style={styles.fieldLabel}>
+        {label}
+        {optional ? <Text style={styles.optional}> ({t('vat_id').split('(')[1]?.replace(')', '') ?? 'optional'})</Text> : null}
+      </Text>
+      <TextInput
+        style={[styles.input, errorKey ? styles.inputError : null]}
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder ?? label}
+        placeholderTextColor={colors.gray400}
+        keyboardType={keyboard ?? 'default'}
+        autoCapitalize="sentences"
+      />
+      {errorKey ? (
+        <Text style={styles.fieldErrorText}>{t(errorKey as Parameters<typeof t>[0]) ?? errorKey}</Text>
+      ) : null}
+    </View>
+  );
+
+  const PartySection = ({ party }: { party: 'seller' | 'buyer' }) => (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>{party === 'seller' ? t('seller_details') : t('buyer_details')}</Text>
+      <Field label={t('name')} value={form[party].name} onChangeText={(v) => setParty(party, 'name', v)} errorKey={fieldErrors[`${party}.name`]} />
+      <Field label={t('street')} value={form[party].street} onChangeText={(v) => setParty(party, 'street', v)} errorKey={fieldErrors[`${party}.street`]} />
+      <View style={styles.row}>
+        <View style={{ flex: 0.4 }}>
+          <Field label={t('zip')} value={form[party].zip} onChangeText={(v) => setParty(party, 'zip', v)} errorKey={fieldErrors[`${party}.zip`]} />
+        </View>
+        <View style={{ flex: 0.6 }}>
+          <Field label={t('city')} value={form[party].city} onChangeText={(v) => setParty(party, 'city', v)} errorKey={fieldErrors[`${party}.city`]} />
         </View>
       </View>
-    );
-  }
+      <Field label={t('country')} value={form[party].country} onChangeText={(v) => setParty(party, 'country', v)} errorKey={fieldErrors[`${party}.country`]} placeholder="DE" />
+      <Field label={t('vat_id')} value={form[party].vatId ?? ''} onChangeText={(v) => setParty(party, 'vatId', v)} optional />
+    </View>
+  );
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => (step === 'items' ? setStep('recipients') : navigation.goBack())} hitSlop={12}>
+        <TouchableOpacity onPress={handleBack} hitSlop={12}>
           <Ionicons name="chevron-back" size={24} color={colors.onSurface} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{t('send_invoice')}</Text>
@@ -103,12 +244,32 @@ export default function SendInvoiceScreen() {
 
       {/* Step indicator */}
       <View style={styles.stepIndicator}>
-        <View style={[styles.stepDot, styles.stepDotActive]} />
-        <View style={[styles.stepLine, step === 'items' && styles.stepLineActive]} />
-        <View style={[styles.stepDot, step === 'items' && styles.stepDotActive]} />
+        {[0, 1, 2].map((i) => {
+          const stepIdx = ['recipients', 'invoice-details', 'items'].indexOf(step);
+          return (
+            <React.Fragment key={i}>
+              <View style={[styles.stepDot, i <= stepIdx && styles.stepDotActive]} />
+              {i < 2 && <View style={[styles.stepLine, i < stepIdx && styles.stepLineActive]} />}
+            </React.Fragment>
+          );
+        })}
       </View>
 
-      <ScrollView contentContainerStyle={{ paddingBottom: 100 + insets.bottom }} showsVerticalScrollIndicator={false}>
+      {/* Error banner */}
+      {error && (
+        <TouchableOpacity style={styles.errorBanner} onPress={() => setError(null)}>
+          <Ionicons name="alert-circle-outline" size={18} color={colors.white} />
+          <Text style={styles.errorBannerText}>{error}</Text>
+        </TouchableOpacity>
+      )}
+
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={{ paddingBottom: 100 + insets.bottom }}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        {/* ── Step 1: Recipients ── */}
         {step === 'recipients' && (
           <View style={styles.stepContent}>
             <Text style={styles.stepTitle}>{t('select_recipients')}</Text>
@@ -148,34 +309,149 @@ export default function SendInvoiceScreen() {
           </View>
         )}
 
+        {/* ── Step 2: Invoice Details ── */}
+        {step === 'invoice-details' && (
+          <View style={styles.stepContent}>
+            <Text style={styles.stepTitle}>{t('invoice_details')}</Text>
+
+            <View style={styles.section}>
+              <Field
+                label={t('invoice_number')}
+                value={form.invoiceNumber}
+                onChangeText={(v) => { setForm((f) => ({ ...f, invoiceNumber: v })); setFieldErrors((e) => { const n = { ...e }; delete n['invoiceNumber']; return n; }); }}
+                errorKey={fieldErrors['invoiceNumber']}
+              />
+              <View style={styles.row}>
+                <View style={{ flex: 1 }}>
+                  <Field
+                    label={t('issue_date_label')}
+                    value={form.issueDate}
+                    onChangeText={(v) => { setForm((f) => ({ ...f, issueDate: v })); setFieldErrors((e) => { const n = { ...e }; delete n['issueDate']; return n; }); }}
+                    placeholder="YYYY-MM-DD"
+                    errorKey={fieldErrors['issueDate']}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Field
+                    label={t('due_date_label')}
+                    value={form.dueDate}
+                    onChangeText={(v) => { setForm((f) => ({ ...f, dueDate: v })); setFieldErrors((e) => { const n = { ...e }; delete n['dueDate']; return n; }); }}
+                    placeholder="YYYY-MM-DD"
+                    errorKey={fieldErrors['dueDate']}
+                  />
+                </View>
+              </View>
+              <Field
+                label={t('currency')}
+                value={form.currency}
+                onChangeText={(v) => setForm((f) => ({ ...f, currency: v.toUpperCase() }))}
+                placeholder="EUR"
+              />
+            </View>
+
+            <PartySection party="seller" />
+            <PartySection party="buyer" />
+
+            {/* Bank Account */}
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>{t('bank_details')}</Text>
+              {fieldErrors['bank'] && (
+                <Text style={styles.fieldErrorText}>{t('bank_fields_incomplete')}</Text>
+              )}
+              <Field label={t('bank_name')} value={form.bankAccount.bankName} onChangeText={(v) => setBank('bankName', v)} optional />
+              <Field label={t('iban')} value={form.bankAccount.iban} onChangeText={(v) => setBank('iban', v)} optional />
+              <Field label={t('bic')} value={form.bankAccount.bic} onChangeText={(v) => setBank('bic', v)} optional />
+            </View>
+
+            {/* Footer */}
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>{t('footer_text')}</Text>
+              <TextInput
+                style={[styles.input, styles.textArea]}
+                value={form.footerText}
+                onChangeText={(v) => setForm((f) => ({ ...f, footerText: v }))}
+                placeholder={t('footer_text')}
+                placeholderTextColor={colors.gray400}
+                multiline
+                numberOfLines={3}
+              />
+            </View>
+          </View>
+        )}
+
+        {/* ── Step 3: Line Items ── */}
         {step === 'items' && (
           <View style={styles.stepContent}>
             <Text style={styles.stepTitle}>{t('invoice_items')}</Text>
-            {items.map((item, idx) => (
+            {form.lineItems.map((item, idx) => (
               <View key={item.id} style={styles.itemCard}>
                 <View style={styles.itemHeader}>
                   <Text style={styles.itemLabel}>Item {idx + 1}</Text>
-                  {items.length > 1 && (
+                  {form.lineItems.length > 1 && (
                     <TouchableOpacity onPress={() => removeItem(item.id)} hitSlop={8}>
                       <Ionicons name="trash-outline" size={16} color={colors.error} />
                     </TouchableOpacity>
                   )}
                 </View>
-                <TextInput
-                  style={styles.itemInput}
-                  placeholder={t('service_product')}
-                  placeholderTextColor={colors.gray400}
-                  value={item.desc}
-                  onChangeText={(v) => updateItem(item.id, 'desc', v)}
-                />
-                <TextInput
-                  style={styles.itemInput}
-                  placeholder={`${t('amount')} (€)`}
-                  placeholderTextColor={colors.gray400}
-                  value={item.amount}
-                  onChangeText={(v) => updateItem(item.id, 'amount', v)}
-                  keyboardType="decimal-pad"
-                />
+                <View style={styles.fieldWrap}>
+                  <TextInput
+                    style={[styles.input, fieldErrors[`item.${item.id}.description`] ? styles.inputError : null]}
+                    placeholder={t('service_product')}
+                    placeholderTextColor={colors.gray400}
+                    value={item.description}
+                    onChangeText={(v) => setLineItem(item.id, 'description', v)}
+                  />
+                  {fieldErrors[`item.${item.id}.description`] && (
+                    <Text style={styles.fieldErrorText}>{t('field_required')}</Text>
+                  )}
+                </View>
+                <View style={styles.row}>
+                  <View style={{ flex: 1 }}>
+                    <View style={styles.fieldWrap}>
+                      <TextInput
+                        style={[styles.input, fieldErrors[`item.${item.id}.quantity`] ? styles.inputError : null]}
+                        placeholder={t('quantity')}
+                        placeholderTextColor={colors.gray400}
+                        value={item.quantity}
+                        onChangeText={(v) => setLineItem(item.id, 'quantity', v)}
+                        keyboardType="decimal-pad"
+                      />
+                      {fieldErrors[`item.${item.id}.quantity`] && (
+                        <Text style={styles.fieldErrorText}>{t('invalid_quantity')}</Text>
+                      )}
+                    </View>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <View style={styles.fieldWrap}>
+                      <TextInput
+                        style={[styles.input, fieldErrors[`item.${item.id}.unitPrice`] ? styles.inputError : null]}
+                        placeholder={`${t('unit_price')} (€)`}
+                        placeholderTextColor={colors.gray400}
+                        value={item.unitPrice}
+                        onChangeText={(v) => setLineItem(item.id, 'unitPrice', v)}
+                        keyboardType="decimal-pad"
+                      />
+                      {fieldErrors[`item.${item.id}.unitPrice`] && (
+                        <Text style={styles.fieldErrorText}>{t('invalid_price')}</Text>
+                      )}
+                    </View>
+                  </View>
+                  <View style={{ flex: 0.8 }}>
+                    <View style={styles.fieldWrap}>
+                      <TextInput
+                        style={[styles.input, fieldErrors[`item.${item.id}.vatPercent`] ? styles.inputError : null]}
+                        placeholder={t('vat_percent')}
+                        placeholderTextColor={colors.gray400}
+                        value={item.vatPercent}
+                        onChangeText={(v) => setLineItem(item.id, 'vatPercent', v)}
+                        keyboardType="decimal-pad"
+                      />
+                      {fieldErrors[`item.${item.id}.vatPercent`] && (
+                        <Text style={styles.fieldErrorText}>{t('invalid_vat')}</Text>
+                      )}
+                    </View>
+                  </View>
+                </View>
               </View>
             ))}
 
@@ -187,9 +463,6 @@ export default function SendInvoiceScreen() {
             <View style={styles.totalCard}>
               <Text style={styles.totalLabel}>{t('total_amount')}</Text>
               <Text style={styles.totalValue}>€{total.toFixed(2)}</Text>
-              <Text style={styles.totalSub}>
-                {t('subtotal_per_person')}: €{(total / Math.max(selectedIds.length, 1)).toFixed(2)}
-              </Text>
             </View>
           </View>
         )}
@@ -197,33 +470,49 @@ export default function SendInvoiceScreen() {
 
       {/* Bottom CTA */}
       <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 12 }]}>
-        {step === 'recipients' ? (
+        {step === 'recipients' && (
           <TouchableOpacity
             style={[styles.ctaBtn, selectedIds.length === 0 && styles.ctaBtnDisabled]}
-            onPress={() => setStep('items')}
+            onPress={handleContinueFromRecipients}
             disabled={selectedIds.length === 0}
             activeOpacity={0.85}
           >
-            <Text style={styles.ctaBtnText}>
-              {t('continue_with', { count: selectedIds.length })}
-            </Text>
+            <Text style={styles.ctaBtnText}>{t('continue_with', { count: selectedIds.length })}</Text>
             <Ionicons name="arrow-forward" size={18} color={colors.black} />
           </TouchableOpacity>
-        ) : (
+        )}
+        {step === 'invoice-details' && (
           <TouchableOpacity
-            style={[styles.ctaBtn, (total <= 0 || sending) && styles.ctaBtnDisabled]}
-            onPress={handleSend}
-            disabled={total <= 0 || sending}
+            style={styles.ctaBtn}
+            onPress={() => {
+              const errs = validateStep2();
+              if (Object.keys(errs).length > 0) {
+                setFieldErrors(errs);
+                scrollRef.current?.scrollTo({ y: 0, animated: true });
+                return;
+              }
+              setFieldErrors({});
+              setStep('items');
+            }}
             activeOpacity={0.85}
           >
-            {sending ? (
+            <Text style={styles.ctaBtnText}>{t('continue')}</Text>
+            <Ionicons name="arrow-forward" size={18} color={colors.black} />
+          </TouchableOpacity>
+        )}
+        {step === 'items' && (
+          <TouchableOpacity
+            style={[styles.ctaBtn, generating && styles.ctaBtnDisabled]}
+            onPress={handleGenerate}
+            disabled={generating}
+            activeOpacity={0.85}
+          >
+            {generating ? (
               <ActivityIndicator color={colors.black} size="small" />
             ) : (
               <>
-                <Ionicons name="send" size={16} color={colors.black} />
-                <Text style={styles.ctaBtnText}>
-                  {t('send_to', { count: selectedIds.length })}
-                </Text>
+                <Ionicons name="document-text-outline" size={16} color={colors.black} />
+                <Text style={styles.ctaBtnText}>{t('generate_pdf')}</Text>
               </>
             )}
           </TouchableOpacity>
@@ -235,7 +524,6 @@ export default function SendInvoiceScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  centeredContainer: { justifyContent: 'center', alignItems: 'center' },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -251,23 +539,47 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: spacing.md,
-    gap: 0,
   },
-  stepDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: colors.gray300,
-  },
+  stepDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.gray300 },
   stepDotActive: { backgroundColor: colors.primary },
-  stepLine: {
-    width: 60,
-    height: 2,
-    backgroundColor: colors.gray200,
-  },
+  stepLine: { width: 60, height: 2, backgroundColor: colors.gray200 },
   stepLineActive: { backgroundColor: colors.primary },
   stepContent: { padding: spacing.md },
   stepTitle: { fontSize: 18, fontWeight: '700', color: colors.onSurface, marginBottom: spacing.md },
+  section: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.xl,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  sectionTitle: { fontSize: 13, fontWeight: '700', color: colors.gray600, marginBottom: spacing.sm, textTransform: 'uppercase', letterSpacing: 0.5 },
+  row: { flexDirection: 'row', gap: spacing.sm },
+  fieldWrap: { marginBottom: 8 },
+  fieldLabel: { fontSize: 12, fontWeight: '600', color: colors.gray600, marginBottom: 4 },
+  optional: { fontWeight: '400', color: colors.gray400 },
+  input: {
+    backgroundColor: colors.white,
+    borderRadius: radius.md,
+    padding: spacing.sm,
+    fontSize: 14,
+    color: colors.onSurface,
+    borderWidth: 1,
+    borderColor: colors.gray200,
+  },
+  inputError: { borderColor: colors.error },
+  textArea: { minHeight: 72, textAlignVertical: 'top' },
+  fieldErrorText: { fontSize: 11, color: colors.error, marginTop: 2 },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.error,
+    marginHorizontal: spacing.md,
+    marginBottom: 4,
+    borderRadius: radius.md,
+    padding: spacing.sm,
+  },
+  errorBannerText: { flex: 1, fontSize: 13, color: colors.white, lineHeight: 18 },
   searchInput: {
     backgroundColor: colors.surface,
     borderRadius: radius.full,
@@ -288,57 +600,16 @@ const styles = StyleSheet.create({
     borderColor: colors.gray200,
     marginBottom: 8,
   },
-  contactRowSelected: {
-    borderColor: colors.primary,
-    backgroundColor: `${colors.primary}08`,
-  },
-  contactIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.surface,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
+  contactRowSelected: { borderColor: colors.primary, backgroundColor: `${colors.primary}08` },
+  contactIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.surface, justifyContent: 'center', alignItems: 'center' },
   contactInfo: { flex: 1 },
   contactName: { fontSize: 14, fontWeight: '600', color: colors.onSurface },
   contactEmail: { fontSize: 12, color: colors.gray600, marginTop: 1 },
-  checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 2,
-    borderColor: colors.gray300,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  checkboxSelected: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  itemCard: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.xl,
-    padding: spacing.md,
-    marginBottom: spacing.sm,
-  },
-  itemHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
+  checkbox: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: colors.gray300, justifyContent: 'center', alignItems: 'center' },
+  checkboxSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
+  itemCard: { backgroundColor: colors.surface, borderRadius: radius.xl, padding: spacing.md, marginBottom: spacing.sm },
+  itemHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   itemLabel: { fontSize: 13, fontWeight: '600', color: colors.gray600 },
-  itemInput: {
-    backgroundColor: colors.white,
-    borderRadius: radius.md,
-    padding: spacing.sm,
-    fontSize: 14,
-    color: colors.onSurface,
-    marginBottom: 6,
-    borderWidth: 1,
-    borderColor: colors.gray200,
-  },
   addItemBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -352,41 +623,11 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   addItemText: { fontSize: 14, fontWeight: '600', color: colors.primary },
-  totalCard: {
-    backgroundColor: colors.onSurface,
-    borderRadius: radius.xl,
-    padding: spacing.md,
-    alignItems: 'center',
-  },
+  totalCard: { backgroundColor: colors.onSurface, borderRadius: radius.xl, padding: spacing.md, alignItems: 'center' },
   totalLabel: { fontSize: 13, color: 'rgba(255,255,255,0.6)', marginBottom: 4 },
   totalValue: { fontSize: 32, fontWeight: '800', color: colors.white },
-  totalSub: { fontSize: 12, color: 'rgba(255,255,255,0.5)', marginTop: 4 },
-  bottomBar: {
-    padding: spacing.md,
-    backgroundColor: colors.background,
-    borderTopWidth: 1,
-    borderTopColor: colors.gray200,
-  },
-  ctaBtn: {
-    backgroundColor: colors.primary,
-    borderRadius: radius.full,
-    padding: spacing.md,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 8,
-  },
+  bottomBar: { padding: spacing.md, backgroundColor: colors.background, borderTopWidth: 1, borderTopColor: colors.gray200 },
+  ctaBtn: { backgroundColor: colors.primary, borderRadius: radius.full, padding: spacing.md, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8 },
   ctaBtnDisabled: { opacity: 0.5 },
   ctaBtnText: { fontSize: 16, fontWeight: '700', color: colors.black },
-  successSection: { alignItems: 'center', padding: spacing.xl },
-  successIcon: { marginBottom: spacing.md },
-  successTitle: { fontSize: 22, fontWeight: '800', color: colors.onSurface, marginBottom: 8 },
-  successDesc: { fontSize: 14, color: colors.gray600, textAlign: 'center', lineHeight: 20, marginBottom: spacing.xl },
-  doneBtn: {
-    backgroundColor: colors.primary,
-    borderRadius: radius.full,
-    paddingVertical: 14,
-    paddingHorizontal: spacing.xl,
-  },
-  doneBtnText: { fontSize: 15, fontWeight: '700', color: colors.black },
 });
