@@ -18,6 +18,13 @@ allprojects {
     google()
     mavenCentral()
     maven { url 'https://www.jitpack.io' }
+    maven {
+      url "https://cardinalcommerceprod.jfrog.io/artifactory/android"
+      credentials {
+        username System.getenv("BRAINTREE_MAVEN_USERNAME") ?: ""
+        password System.getenv("BRAINTREE_MAVEN_PASSWORD") ?: ""
+      }
+    }
   }
 }
 
