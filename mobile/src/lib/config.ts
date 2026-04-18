@@ -30,5 +30,4 @@ export const config = {
   observabilityIngestPath: process.env.EXPO_PUBLIC_OBSERVABILITY_INGEST_PATH ?? '/api/observability/mobile-logs',
   observabilitySampleRate: Math.min(1, Math.max(0, parseNumber(process.env.EXPO_PUBLIC_OBSERVABILITY_SAMPLE_RATE, 1))),
   observabilityCaptureConsole: parseBoolean(process.env.EXPO_PUBLIC_OBSERVABILITY_CAPTURE_CONSOLE, true),
-  stripePublishableKey: process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? 'pk_test_placeholder',
 };

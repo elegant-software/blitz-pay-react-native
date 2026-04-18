@@ -5,6 +5,7 @@ import {
   type LinkingOptions,
 } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
+import * as ExpoSplashScreen from 'expo-splash-screen';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from './src/lib/auth';
@@ -19,6 +20,9 @@ import { ensurePaymentsChannel } from './src/lib/notifications/channels';
 import { initPushHandlers } from './src/lib/notifications/pushHandlers';
 import { recoverInFlight } from './src/lib/payments/recoverInFlight';
 import type { RootStackParamList } from './src/types';
+
+// Keep native splash up until our custom JS splash is rendered, preventing black flash
+ExpoSplashScreen.preventAutoHideAsync();
 
 const navigationRef = createNavigationContainerRef<RootStackParamList>();
 
@@ -53,6 +57,8 @@ export default function App() {
   useEffect(() => {
     initObservability();
     void ensurePaymentsChannel();
+    // Custom splash is now rendered — safe to dismiss the native one
+    void ExpoSplashScreen.hideAsync();
   }, []);
 
   return (

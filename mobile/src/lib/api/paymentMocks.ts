@@ -5,7 +5,7 @@ export const mockCreatePaymentIntent = async (params: {
   amount: number;
   currency: string;
 }): Promise<StripeParams> => {
-  const url = `${config.apiUrl}/api/payments/create-intent`;
+  const url = `${config.apiUrl}/v1/payments/stripe/create-intent`;
   console.log(`[Stripe] Calling backend at: ${url}`);
   
   try {

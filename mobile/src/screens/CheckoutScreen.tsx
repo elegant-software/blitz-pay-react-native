@@ -20,6 +20,7 @@ import { resolveFailureReasonKey } from '../lib/payments/failureReasons';
 import { registerDeviceForPayment } from '../lib/notifications/pushRegistration';
 import { observability } from '../lib/observability';
 import { useStripePayment } from '../hooks/useStripePayment';
+import { useBraintreePayPal } from '../hooks/useBraintreePayPal';
 import { mockCreatePaymentIntent } from '../lib/api/paymentMocks';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import type { RootStackNav, RootStackParamList } from '../types';
@@ -38,6 +39,7 @@ export default function CheckoutScreen() {
   const invoiceId = route.params?.invoiceId;
 
   const { initializePayment, openPaymentSheet } = useStripePayment();
+  const { presentPayPal } = useBraintreePayPal();
 
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>('bank');
   const [processing, setProcessing] = useState(false);
@@ -127,6 +129,39 @@ export default function CheckoutScreen() {
         return;
       }
 
+      if (selectedMethod === 'paypal') {
+        const result = await presentPayPal({ amount, currency: 'EUR', invoiceId });
+
+        if (result.status === 'succeeded') {
+          observability.info('checkout_confirm_succeeded', {
+            method: selectedMethod,
+            amount,
+            invoiceId: invoiceId ?? null,
+            transactionId: result.transactionId ?? null,
+          });
+          setShowSuccess(true);
+          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        } else if (result.status === 'failed') {
+          observability.warn('checkout_confirm_failed', {
+            method: selectedMethod,
+            amount,
+            invoiceId: invoiceId ?? null,
+            reasonKey: 'paypal_failed',
+            message: result.error ?? 'paypal_failed',
+          });
+          setError(result.error ? t(result.error as Parameters<typeof t>[0]) ?? result.error : t('paypal_failed'));
+          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        } else {
+          observability.info('checkout_confirm_cancelled', {
+            method: selectedMethod,
+            amount,
+            invoiceId: invoiceId ?? null,
+          });
+          setProcessing(false);
+        }
+        return;
+      }
+
       await new Promise((resolve) => setTimeout(resolve, 1800));
 
       observability.info('checkout_confirm_succeeded', {
@@ -137,7 +172,12 @@ export default function CheckoutScreen() {
       setShowSuccess(true);
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (err) {
-      const key = err instanceof Error ? err.message : 'truelayer_reason_unknown';
+      const rawMessage = err instanceof Error ? err.message : String(err);
+      const isNetworkError =
+        rawMessage === 'Network request failed' ||
+        rawMessage.toLowerCase().includes('network') ||
+        rawMessage.toLowerCase().includes('fetch');
+      const key = isNetworkError ? 'error_server_unreachable' : (err instanceof Error ? err.message : 'truelayer_reason_unknown');
       observability.error(
         'checkout_confirm_failed',
         {
@@ -145,14 +185,16 @@ export default function CheckoutScreen() {
           amount,
           invoiceId: invoiceId ?? null,
           reasonKey: key,
-          message: err instanceof Error ? err.message : String(err),
+          message: rawMessage,
         },
         err instanceof Error ? err : undefined
       );
       setError(t(key as Parameters<typeof t>[0]));
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {
-      if (selectedMethod !== 'card' || (selectedMethod === 'card' && !showSuccess)) {
+      const keepProcessing =
+        (selectedMethod === 'card' || selectedMethod === 'paypal') && showSuccess;
+      if (!keepProcessing) {
         setProcessing(false);
       }
     }
