@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -7,93 +7,29 @@ import {
   StyleSheet,
   Modal,
   ActivityIndicator,
-  Linking,
-  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 import { useLanguage } from '../lib/LanguageContext';
+import { useAuth } from '../lib/auth';
+import { createTrueLayerPayment, runTrueLayerSdk } from '../lib/truelayer';
+import { paymentResultTracker } from '../lib/payments/paymentResultTracker';
+import { resolveFailureReasonKey } from '../lib/payments/failureReasons';
+import { registerDeviceForPayment } from '../lib/notifications/pushRegistration';
+import { observability } from '../lib/observability';
+import { useStripePayment } from '../hooks/useStripePayment';
+import { useBraintreePayPal } from '../hooks/useBraintreePayPal';
+import { mockCreatePaymentIntent } from '../lib/api/paymentMocks';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import type { RootStackNav, RootStackParamList } from '../types';
-import { useAuth } from '../lib/auth';
-import {
-  buildTrueLayerRedirectUri,
-  clearActiveTrueLayerPayment,
-  consumePendingTrueLayerReturnUrl,
-  createTrueLayerPayment,
-  getActiveTrueLayerPayment,
-  isTrueLayerRedirectUrl,
-  saveActiveTrueLayerPayment,
-  type TrueLayerPaymentContext,
-} from '../lib/truelayer';
 
 type PaymentMethod = 'bank' | 'card' | 'paypal';
 
-type ProcessorResultLike = {
-  type?: string;
-  step?: string;
-  reason?: string;
-  failure?: string;
-  status?: string;
-};
-
-type TrueLayerSdkModule = {
-  TrueLayerPaymentsSDKWrapper: {
-    configure: (environment: unknown) => Promise<void>;
-    processPayment: (
-      context: {
-        paymentId: string;
-        resourceToken: string;
-        redirectUri: string;
-      },
-      preferences?: {
-        shouldPresentResultScreen?: boolean;
-        preferredCountryCode?: string;
-      },
-    ) => Promise<ProcessorResultLike>;
-    paymentStatus: (context: {
-      paymentId: string;
-      resourceToken: string;
-    }) => Promise<ProcessorResultLike>;
-  };
-  Environment: {
-    Sandbox: unknown;
-    Production: unknown;
-  };
-  ResultType: {
-    Success: string;
-    Failure: string;
-  };
-};
-
-const trueLayerSdk: TrueLayerSdkModule | null = Platform.OS === 'web'
-  ? null
-  : require('rn-truelayer-payments-sdk') as TrueLayerSdkModule;
-
-let configuredSdkEnvironment: 'sandbox' | 'production' | null = null;
-
-async function configureTrueLayerSdk(environment: 'sandbox' | 'production'): Promise<void> {
-  if (!trueLayerSdk) {
-    throw new Error('TrueLayer payments are not available on this platform.');
-  }
-
-  if (configuredSdkEnvironment === environment) {
-    return;
-  }
-
-  const targetEnvironment = environment === 'production'
-    ? trueLayerSdk.Environment.Production
-    : trueLayerSdk.Environment.Sandbox;
-
-  await trueLayerSdk.TrueLayerPaymentsSDKWrapper.configure(targetEnvironment);
-  configuredSdkEnvironment = environment;
-}
-
 export default function CheckoutScreen() {
   const { t } = useLanguage();
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const navigation = useNavigation<RootStackNav>();
   const route = useRoute<RouteProp<RootStackParamList, 'Checkout'>>();
   const insets = useSafeAreaInsets();
@@ -102,48 +38,179 @@ export default function CheckoutScreen() {
   const merchantName = route.params?.merchantName ?? 'Merchant';
   const invoiceId = route.params?.invoiceId;
 
+  const { initializePayment, openPaymentSheet } = useStripePayment();
+  const { presentPayPal } = useBraintreePayPal();
+
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>('bank');
   const [processing, setProcessing] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [error, setError] = useState('');
 
-  const activePaymentRef = useRef<TrueLayerPaymentContext | null>(null);
-  const isMountedRef = useRef(true);
+  const handleConfirm = async () => {
+    setError('');
+    setProcessing(true);
 
-  useEffect(() => {
-    return () => {
-      isMountedRef.current = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    const resumeFromPendingRedirect = async () => {
-      const pendingRedirectUrl = await consumePendingTrueLayerReturnUrl();
-      if (pendingRedirectUrl && isTrueLayerRedirectUrl(pendingRedirectUrl)) {
-        await resumeTrueLayerPayment(pendingRedirectUrl);
-      }
-    };
-
-    void resumeFromPendingRedirect();
-
-    const subscription = Linking.addEventListener('url', ({ url }) => {
-      if (isTrueLayerRedirectUrl(url)) {
-        void resumeTrueLayerPayment(url);
-      }
+    observability.info('checkout_confirm_started', {
+      method: selectedMethod,
+      amount,
+      merchantName,
+      invoiceId: invoiceId ?? null,
     });
 
-    return () => {
-      subscription.remove();
-    };
-  }, []);
+    try {
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+      if (selectedMethod === 'bank') {
+        const context = await createTrueLayerPayment({
+          token,
+          amount,
+          merchantName,
+          invoiceId,
+          user,
+        });
+        const { paymentRequestId } = context;
+
+        // Register for push and arm the poller BEFORE handing off to the SDK,
+        // so the backend can reach us regardless of how the SDK flow ends.
+        void registerDeviceForPayment(paymentRequestId);
+        void paymentResultTracker.start(paymentRequestId);
+
+        observability.info('checkout_confirm_succeeded', {
+          method: selectedMethod,
+          amount,
+          invoiceId: invoiceId ?? null,
+          paymentRequestId,
+        });
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        navigation.replace('PaymentProcessing', {
+          paymentRequestId,
+          amount,
+          currency: 'EUR',
+          merchantName,
+          invoiceId,
+        });
+
+        // Fire the SDK after navigation. The tracker is the source of truth for
+        // the outcome; an SDK cancellation is fed back as a recovered result so
+        // the user lands on the result screen without waiting for the timeout.
+        void runTrueLayerSdk(context).catch((err) => {
+          const key = err instanceof Error ? err.message : 'truelayer_reason_unknown';
+          if (key === 'truelayer_cancelled' || resolveFailureReasonKey(key) === 'truelayer_cancelled') {
+            paymentResultTracker.applyRecoveredResult({
+              paymentRequestId,
+              status: 'cancelled',
+              reason: 'UserAborted',
+            });
+          }
+        });
+        return;
+      }
+
+      if (selectedMethod === 'card') {
+        const stripeParams = await mockCreatePaymentIntent({ amount, currency: 'EUR' });
+        await initializePayment(stripeParams);
+        const result = await openPaymentSheet();
+
+        if (result.status === 'succeeded') {
+          observability.info('checkout_confirm_succeeded', {
+            method: selectedMethod,
+            amount,
+            invoiceId: invoiceId ?? null,
+          });
+          setShowSuccess(true);
+          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        } else if (result.status === 'failed') {
+          setError(result.error || 'Payment failed');
+          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        } else {
+          // cancelled
+          setProcessing(false);
+        }
+        return;
+      }
+
+      if (selectedMethod === 'paypal') {
+        const result = await presentPayPal({ amount, currency: 'EUR', invoiceId });
+
+        if (result.status === 'succeeded') {
+          observability.info('checkout_confirm_succeeded', {
+            method: selectedMethod,
+            amount,
+            invoiceId: invoiceId ?? null,
+            transactionId: result.transactionId ?? null,
+          });
+          setShowSuccess(true);
+          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        } else if (result.status === 'failed') {
+          observability.warn('checkout_confirm_failed', {
+            method: selectedMethod,
+            amount,
+            invoiceId: invoiceId ?? null,
+            reasonKey: 'paypal_failed',
+            message: result.error ?? 'paypal_failed',
+          });
+          setError(result.error ? t(result.error as Parameters<typeof t>[0]) ?? result.error : t('paypal_failed'));
+          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        } else {
+          observability.info('checkout_confirm_cancelled', {
+            method: selectedMethod,
+            amount,
+            invoiceId: invoiceId ?? null,
+          });
+          setProcessing(false);
+        }
+        return;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 1800));
+
+      observability.info('checkout_confirm_succeeded', {
+        method: selectedMethod,
+        amount,
+        invoiceId: invoiceId ?? null,
+      });
+      setShowSuccess(true);
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (err) {
+      const rawMessage = err instanceof Error ? err.message : String(err);
+      const isNetworkError =
+        rawMessage === 'Network request failed' ||
+        rawMessage.toLowerCase().includes('network') ||
+        rawMessage.toLowerCase().includes('fetch');
+      const key = isNetworkError ? 'error_server_unreachable' : (err instanceof Error ? err.message : 'truelayer_reason_unknown');
+      observability.error(
+        'checkout_confirm_failed',
+        {
+          method: selectedMethod,
+          amount,
+          invoiceId: invoiceId ?? null,
+          reasonKey: key,
+          message: rawMessage,
+        },
+        err instanceof Error ? err : undefined
+      );
+      setError(t(key as Parameters<typeof t>[0]));
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      const keepProcessing =
+        (selectedMethod === 'card' || selectedMethod === 'paypal') && showSuccess;
+      if (!keepProcessing) {
+        setProcessing(false);
+      }
+    }
+  };
+
+  const handleContinue = () => {
+    setShowSuccess(false);
+    navigation.navigate('Main');
+  };
 
   const methods = [
     {
       key: 'bank' as PaymentMethod,
       icon: 'business-outline',
-      label: t('pay_with_truelayer'),
-      sub: t('instant_bank_payment'),
+      label: t('bank_account_direct'),
+      sub: t('ach_transfer'),
     },
     {
       key: 'card' as PaymentMethod,
@@ -159,210 +226,9 @@ export default function CheckoutScreen() {
     },
   ];
 
-  const setFailureState = (message: string) => {
-    if (!isMountedRef.current) return;
-    setProcessing(false);
-    setStatusMessage(null);
-    setErrorMessage(message);
-  };
-
-  const completeSuccess = async () => {
-    await clearActiveTrueLayerPayment();
-    activePaymentRef.current = null;
-
-    if (!isMountedRef.current) return;
-
-    setProcessing(false);
-    setStatusMessage(null);
-    setErrorMessage(null);
-    setShowSuccess(true);
-    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  };
-
-  const extractFailureMessage = (result: ProcessorResultLike | null | undefined): string => {
-    const reason = String(result?.reason ?? result?.failure ?? '').trim();
-
-    if (reason === 'UserAborted' || reason === 'UserCanceledAtProvider') {
-      return t('truelayer_cancelled');
-    }
-
-    if (!reason) {
-      return t('truelayer_failed');
-    }
-
-    return `${t('truelayer_failed')} (${reason})`;
-  };
-
-  const settleTrueLayerPayment = async (context: TrueLayerPaymentContext): Promise<void> => {
-    if (!trueLayerSdk) {
-      throw new Error(t('truelayer_unavailable'));
-    }
-
-    const statusResult = await trueLayerSdk.TrueLayerPaymentsSDKWrapper.paymentStatus({
-      paymentId: context.paymentId,
-      resourceToken: context.resourceToken,
-    }).catch(() => null);
-
-    const successType = trueLayerSdk.ResultType.Success;
-    const paymentStatus = String(statusResult?.status ?? '');
-
-    if (
-      statusResult?.type === successType
-      && ['Authorized', 'Executed', 'Settled'].includes(paymentStatus)
-    ) {
-      await completeSuccess();
-      return;
-    }
-
-    if (paymentStatus === 'Failed') {
-      await clearActiveTrueLayerPayment();
-      activePaymentRef.current = null;
-      setFailureState(extractFailureMessage(statusResult));
-      return;
-    }
-
-    await completeSuccess();
-  };
-
-  const processTrueLayerContext = async (context: TrueLayerPaymentContext): Promise<void> => {
-    if (!trueLayerSdk) {
-      throw new Error(t('truelayer_unavailable'));
-    }
-
-    await configureTrueLayerSdk(context.environment);
-
-    const result = await trueLayerSdk.TrueLayerPaymentsSDKWrapper.processPayment(
-      {
-        paymentId: context.paymentId,
-        resourceToken: context.resourceToken,
-        redirectUri: context.redirectUri,
-      },
-      {
-        shouldPresentResultScreen: true,
-        ...(context.preferredCountryCode ? { preferredCountryCode: context.preferredCountryCode } : {}),
-      },
-    );
-
-    if (result.type === trueLayerSdk.ResultType.Failure) {
-      await clearActiveTrueLayerPayment();
-      activePaymentRef.current = null;
-      setFailureState(extractFailureMessage(result));
-      return;
-    }
-
-    const step = String(result.step ?? '');
-
-    if (step === 'Redirect' || step === 'Wait') {
-      if (isMountedRef.current) {
-        setStatusMessage(t('truelayer_continue_bank'));
-      }
-      return;
-    }
-
-    await settleTrueLayerPayment(context);
-  };
-
-  async function resumeTrueLayerPayment(url: string): Promise<void> {
-    if (!isTrueLayerRedirectUrl(url)) {
-      return;
-    }
-
-    const activePayment = activePaymentRef.current ?? await getActiveTrueLayerPayment();
-    if (!activePayment) {
-      return;
-    }
-
-    activePaymentRef.current = activePayment;
-
-    if (isMountedRef.current) {
-      setProcessing(true);
-      setErrorMessage(null);
-      setStatusMessage(t('truelayer_resuming'));
-    }
-
-    try {
-      await processTrueLayerContext(activePayment);
-    } catch (error) {
-      await clearActiveTrueLayerPayment();
-      activePaymentRef.current = null;
-      setFailureState(
-        error instanceof Error && error.message.trim().length > 0
-          ? error.message
-          : t('truelayer_failed'),
-      );
-    }
-  }
-
-  const handlePrototypePayment = async () => {
-    setProcessing(true);
-    setErrorMessage(null);
-    setStatusMessage(null);
-
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-
-    setTimeout(() => {
-      if (!isMountedRef.current) return;
-      setProcessing(false);
-      setShowSuccess(true);
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    }, 1200);
-  };
-
-  const handleTrueLayerPayment = async () => {
-    if (!trueLayerSdk) {
-      setFailureState(t('truelayer_unavailable'));
-      return;
-    }
-
-    setProcessing(true);
-    setErrorMessage(null);
-    setStatusMessage(t('truelayer_preparing'));
-
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-
-    try {
-      const paymentContext = await createTrueLayerPayment({
-        accessToken: token,
-        amount,
-        merchantName,
-        invoiceId,
-        redirectUri: buildTrueLayerRedirectUri(),
-      });
-
-      activePaymentRef.current = paymentContext;
-      await saveActiveTrueLayerPayment(paymentContext);
-      await processTrueLayerContext(paymentContext);
-    } catch (error) {
-      await clearActiveTrueLayerPayment();
-      activePaymentRef.current = null;
-      setFailureState(
-        error instanceof Error && error.message.trim().length > 0
-          ? error.message
-          : t('truelayer_failed'),
-      );
-    }
-  };
-
-  const handleConfirm = async () => {
-    if (processing) {
-      return;
-    }
-
-    if (selectedMethod === 'bank') {
-      await handleTrueLayerPayment();
-      return;
-    }
-
-    await handlePrototypePayment();
-  };
-
-  const handleContinue = () => {
-    setShowSuccess(false);
-    navigation.navigate('Main');
-  };
-
   return (
     <View style={styles.container}>
+      {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={12}>
           <Ionicons name="close" size={24} color={colors.onSurface} />
@@ -374,12 +240,14 @@ export default function CheckoutScreen() {
       </View>
 
       <ScrollView contentContainerStyle={{ paddingBottom: 100 + insets.bottom }} showsVerticalScrollIndicator={false}>
+        {/* Amount summary */}
         <View style={styles.amountCard}>
           <Text style={styles.amountLabel}>{t('total_due')}</Text>
           <Text style={styles.amountValue}>€{amount.toFixed(2)}</Text>
           <Text style={styles.amountMerchant}>{merchantName}</Text>
         </View>
 
+        {/* Payment methods */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>{t('payment_method')}</Text>
           {methods.map((method) => (
@@ -409,35 +277,31 @@ export default function CheckoutScreen() {
           ))}
         </View>
 
-        {(errorMessage || statusMessage) && (
-          <View style={[styles.messageCard, errorMessage ? styles.errorCard : styles.infoCard]}>
-            <Ionicons
-              name={errorMessage ? 'alert-circle-outline' : 'information-circle-outline'}
-              size={18}
-              color={errorMessage ? colors.error : colors.primary}
-            />
-            <Text style={[styles.messageText, errorMessage ? styles.errorText : styles.infoText]}>
-              {errorMessage ?? statusMessage}
-            </Text>
+        {error ? (
+          <View style={styles.errorBox}>
+            <Ionicons name="alert-circle-outline" size={16} color={colors.error} />
+            <Text style={styles.errorText}>{error}</Text>
           </View>
-        )}
+        ) : null}
 
+        {/* Security note */}
         <View style={styles.securityNote}>
           <Ionicons name="shield-checkmark-outline" size={16} color={colors.success} />
           <View style={styles.securityTextBox}>
             <Text style={styles.securityTitle}>{t('encrypted_transaction')}</Text>
-            <Text style={styles.securityDesc}>{t('secure_msg')}</Text>
+            <Text style={styles.securityDesc}>
+              {selectedMethod === 'bank' ? t('truelayer_secure_checkout') : t('secure_msg')}
+            </Text>
           </View>
         </View>
       </ScrollView>
 
+      {/* Confirm button */}
       <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 12 }]}>
         <Text style={styles.authorizedBy}>{t('authorized_by')}</Text>
         <TouchableOpacity
           style={[styles.confirmBtn, processing && styles.confirmBtnDisabled]}
-          onPress={() => {
-            void handleConfirm();
-          }}
+          onPress={handleConfirm}
           disabled={processing}
           activeOpacity={0.85}
         >
@@ -447,13 +311,15 @@ export default function CheckoutScreen() {
             <>
               <Ionicons name="flash" size={18} color={colors.black} />
               <Text style={styles.confirmBtnText}>
-                {selectedMethod === 'bank' ? t('pay_with_truelayer') : t('confirm_payment')} · €{amount.toFixed(2)}
+                {(selectedMethod === 'bank' ? t('pay_with_truelayer') : t('confirm_payment'))} · €{amount.toFixed(2)}
               </Text>
             </>
           )}
         </TouchableOpacity>
+        {processing ? <Text style={styles.processingText}>{t('processing_payment')}</Text> : null}
       </View>
 
+      {/* Success modal */}
       <Modal visible={showSuccess} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.successCard}>
@@ -461,7 +327,9 @@ export default function CheckoutScreen() {
               <Ionicons name="checkmark-circle" size={64} color={colors.success} />
             </View>
             <Text style={styles.successTitle}>{t('payment_successful')}</Text>
-            <Text style={styles.successDesc}>{t('reward_msg')}</Text>
+            <Text style={styles.successDesc}>
+              {t('reward_msg')}
+            </Text>
             <View style={styles.pointsBadge}>
               <Text style={styles.pointsText}>{t('points_earned', { amount: '250' })}</Text>
             </View>
@@ -522,10 +390,10 @@ const styles = StyleSheet.create({
     backgroundColor: `${colors.primary}08`,
   },
   methodIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: radius.lg,
-    backgroundColor: colors.gray100,
+    width: 40,
+    height: 40,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -533,163 +401,115 @@ const styles = StyleSheet.create({
     backgroundColor: `${colors.primary}15`,
   },
   methodInfo: { flex: 1 },
-  methodLabel: { fontSize: 15, fontWeight: '600', color: colors.onSurface },
+  methodLabel: { fontSize: 14, fontWeight: '600', color: colors.onSurface },
   methodLabelSelected: { color: colors.primary },
-  methodSub: { fontSize: 12, color: colors.gray500, marginTop: 2 },
+  methodSub: { fontSize: 12, color: colors.gray600, marginTop: 2 },
   radio: {
-    width: 22,
-    height: 22,
-    borderRadius: radius.full,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     borderWidth: 2,
     borderColor: colors.gray300,
-    alignItems: 'center',
     justifyContent: 'center',
+    alignItems: 'center',
   },
-  radioSelected: {
-    borderColor: colors.primary,
-  },
+  radioSelected: { borderColor: colors.primary },
   radioDot: {
     width: 10,
     height: 10,
-    borderRadius: radius.full,
+    borderRadius: 5,
     backgroundColor: colors.primary,
   },
-  messageCard: {
+  securityNote: {
     flexDirection: 'row',
     gap: spacing.sm,
+    marginHorizontal: spacing.md,
+    padding: spacing.md,
+    backgroundColor: `${colors.success}08`,
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    borderColor: `${colors.success}20`,
+  },
+  securityTextBox: { flex: 1 },
+  securityTitle: { fontSize: 13, fontWeight: '600', color: colors.onSurface, marginBottom: 2 },
+  securityDesc: { fontSize: 12, color: colors.gray600, lineHeight: 16 },
+  errorBox: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: spacing.sm,
     marginHorizontal: spacing.md,
     marginBottom: spacing.md,
     padding: spacing.md,
     borderRadius: radius.xl,
     borderWidth: 1,
-  },
-  infoCard: {
-    backgroundColor: `${colors.primary}10`,
-    borderColor: `${colors.primary}20`,
-  },
-  errorCard: {
+    borderColor: `${colors.error}30`,
     backgroundColor: `${colors.error}10`,
-    borderColor: `${colors.error}20`,
   },
-  messageText: {
+  errorText: {
     flex: 1,
     fontSize: 13,
+    color: colors.error,
     lineHeight: 18,
-    fontWeight: '500',
-  },
-  infoText: { color: colors.onSurface },
-  errorText: { color: colors.error },
-  securityNote: {
-    marginHorizontal: spacing.md,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.sm,
-    padding: spacing.md,
-    backgroundColor: `${colors.success}08`,
-    borderRadius: radius.xl,
-    borderWidth: 1,
-    borderColor: `${colors.success}18`,
-  },
-  securityTextBox: { flex: 1 },
-  securityTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.onSurface,
-    marginBottom: 2,
-  },
-  securityDesc: {
-    fontSize: 12,
-    lineHeight: 18,
-    color: colors.gray600,
   },
   bottomBar: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    backgroundColor: 'rgba(255,255,255,0.95)',
+    padding: spacing.md,
+    backgroundColor: colors.background,
     borderTopWidth: 1,
     borderTopColor: colors.gray200,
   },
   authorizedBy: {
     fontSize: 11,
-    fontWeight: '600',
     color: colors.gray500,
     textAlign: 'center',
-    marginBottom: spacing.sm,
+    marginBottom: 8,
   },
   confirmBtn: {
     backgroundColor: colors.primary,
     borderRadius: radius.full,
-    paddingVertical: spacing.md,
-    alignItems: 'center',
-    justifyContent: 'center',
+    padding: spacing.md,
     flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
     gap: 8,
-    ...shadow.md,
   },
-  confirmBtnDisabled: {
-    opacity: 0.7,
-  },
-  confirmBtnText: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: colors.black,
+  confirmBtnDisabled: { opacity: 0.7 },
+  confirmBtnText: { fontSize: 16, fontWeight: '700', color: colors.black },
+  processingText: {
+    marginTop: spacing.sm,
+    fontSize: 12,
+    color: colors.gray600,
+    textAlign: 'center',
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.7)',
     justifyContent: 'center',
+    alignItems: 'center',
     padding: spacing.lg,
   },
   successCard: {
-    width: '100%',
     backgroundColor: colors.background,
     borderRadius: radius.xxl,
     padding: spacing.xl,
     alignItems: 'center',
+    width: '100%',
   },
   successIcon: { marginBottom: spacing.md },
-  successTitle: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: colors.onSurface,
-    marginBottom: 8,
-  },
-  successDesc: {
-    fontSize: 14,
-    lineHeight: 20,
-    color: colors.gray600,
-    textAlign: 'center',
-  },
+  successTitle: { fontSize: 22, fontWeight: '800', color: colors.onSurface, marginBottom: 8 },
+  successDesc: { fontSize: 14, color: colors.gray600, textAlign: 'center', lineHeight: 20, marginBottom: spacing.md },
   pointsBadge: {
-    marginTop: spacing.lg,
-    marginBottom: spacing.lg,
+    backgroundColor: `${colors.primary}15`,
+    borderRadius: radius.full,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    backgroundColor: `${colors.primary}14`,
-    borderRadius: radius.full,
+    paddingVertical: 6,
+    marginBottom: spacing.lg,
   },
-  pointsText: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: colors.primary,
-  },
+  pointsText: { fontSize: 16, fontWeight: '700', color: colors.primary },
   continueBtn: {
-    width: '100%',
-    paddingVertical: spacing.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: radius.full,
     backgroundColor: colors.onSurface,
+    borderRadius: radius.full,
+    paddingVertical: 14,
+    paddingHorizontal: spacing.xl,
   },
-  continueBtnText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: colors.white,
-  },
+  continueBtnText: { fontSize: 15, fontWeight: '700', color: colors.white },
 });

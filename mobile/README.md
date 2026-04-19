@@ -1,0 +1,37 @@
+# BlitzPay Mobile
+
+React Native / Expo app for BlitzPay.
+
+## Setup
+
+```bash
+cp .env.example .env   # fill in values (or set EXPO_PUBLIC_AUTH_BYPASS=true)
+npm install
+```
+
+## Running
+
+```bash
+npm run ios       # iOS Simulator
+npm run android   # Android Emulator
+npm run start     # Expo Go / Dev Client
+```
+
+## Environment Variables
+
+Copy `.env.example` to `.env` and fill in the values. Set `EXPO_PUBLIC_AUTH_BYPASS=true` to skip Keycloak for demos.
+
+## Braintree / Cardinal Commerce Maven Repository
+
+The Android build requires credentials for the private Cardinal Commerce Maven repo used by the Braintree SDK. These are **not** committed to the repo.
+
+Set the following environment variables before running `npm run android`:
+
+```bash
+export BRAINTREE_MAVEN_USERNAME=braintree_team_sdk
+export BRAINTREE_MAVEN_PASSWORD=<password>
+```
+
+> Credentials are available in the team's shared secret store (e.g. 1Password / Vault). Ask a team member if you don't have access.
+
+The `mobile/plugins/withBraintreeMavenRepo.js` Expo config plugin reads these via `System.getenv()` and injects them into the Android Gradle build.

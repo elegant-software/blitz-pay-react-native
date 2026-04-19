@@ -37,7 +37,14 @@
       "Read(//tmp/**)",
       "mcp__claude_ai_Notion__notion-fetch",
       "mcp__claude_ai_Notion__notion-update-page",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(python3 -c \"import sys,json; p=json.load\\(sys.stdin\\); d={**p.get\\('dependencies',{}\\)}; [print\\(k,v\\) for k,v in d.items\\(\\) if 'pdf' in k or 'blob' in k or 'sharing' in k]\")",
+      "Bash(npm install *)",
+      "Bash(node -e \"require\\('./plugins/withBraintreeMavenRepo.js'\\); console.log\\('plugin OK'\\)\")",
+      "Bash(node -e \"require\\('./app.config.js'\\); console.log\\('app.config OK'\\)\")",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(json.dumps\\({k:v for k,v in {**d.get\\('dependencies',{}\\), **d.get\\('devDependencies',{}\\)}.items\\(\\)}, indent=2\\)\\)\")",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d.get\\('expo',{}\\).get\\('plugins',[]\\), indent=2\\)\\)\")",
+      "Bash(bash *)"
     ]
   }
 }

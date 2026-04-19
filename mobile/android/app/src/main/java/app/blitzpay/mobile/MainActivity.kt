@@ -1,5 +1,6 @@
 package app.blitzpay.mobile
 import expo.modules.splashscreen.SplashScreenManager
+import com.expobraintree.ExpoBraintreeModule
 
 import android.os.Build
 import android.os.Bundle
@@ -21,6 +22,9 @@ class MainActivity : ReactActivity() {
     SplashScreenManager.registerOnActivity(this)
     // @generated end expo-splashscreen
     super.onCreate(null)
+    // add BraintreeModule import @generated begin braintree-module-init - expo prebuild (DO NOT MODIFY) sync-cadbdbc8f6cf144ea920083490e79f317b8bb925
+   ExpoBraintreeModule.init()
+    // add BraintreeModule import @generated end braintree-module-init
   }
 
   /**
