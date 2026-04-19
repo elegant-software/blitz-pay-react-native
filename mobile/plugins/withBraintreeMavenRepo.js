@@ -1,6 +1,6 @@
 const { withProjectBuildGradle } = require('expo/config-plugins');
 
-const BRAINTREE_MAVEN_BLOCK = `
+const MAVEN_BLOCK = `
     maven {
       url "https://cardinalcommerceprod.jfrog.io/artifactory/android"
       credentials {
@@ -10,14 +10,15 @@ const BRAINTREE_MAVEN_BLOCK = `
     }`;
 
 module.exports = function withBraintreeMavenRepo(config) {
-  return withProjectBuildGradle(config, (cfg) => {
-    const contents = cfg.modResults.contents;
-    if (!contents.includes('cardinalcommerceprod.jfrog.io')) {
-      cfg.modResults.contents = contents.replace(
-        /allprojects\s*\{\s*\n(\s*)repositories\s*\{/,
-        (match, indent) => `allprojects {\n${indent}repositories {${BRAINTREE_MAVEN_BLOCK}`,
-      );
+  return withProjectBuildGradle(config, (nextConfig) => {
+    const contents = nextConfig.modResults.contents;
+    if (contents.includes('cardinalcommerceprod.jfrog.io')) {
+      return nextConfig;
     }
-    return cfg;
+    nextConfig.modResults.contents = contents.replace(
+      /maven\s*\{\s*url\s*'https:\/\/www\.jitpack\.io'\s*\}/,
+      `maven { url 'https://www.jitpack.io' }${MAVEN_BLOCK}`
+    );
+    return nextConfig;
   });
 };

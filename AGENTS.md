@@ -18,7 +18,7 @@ Operating manual for AI coding agents (Claude Code, Codex, etc.) working in this
 
 ## Payment / TrueLayer Work — Special Rules
 
-When touching `mobile/src/lib/truelayer.ts`, `mobile/src/screens/CheckoutScreen.tsx`, `server.ts`, or anything under a `specs/*truelayer*` / `specs/*payment*` folder:
+When touching `mobile/src/lib/truelayer.ts`, `mobile/src/screens/CheckoutScreen.tsx`, or anything under a `specs/*truelayer*` / `specs/*payment*` folder:
 
 1. **Instrument before you refactor.** If the file has fewer observability calls than Constitution §I requires, add them in the same PR.
 2. **Log provider reasons verbatim.** `result.reason`, HTTP response bodies, Keycloak `error_description` — all go to `observability.error`/`warn` before being mapped to a user-facing i18n key.

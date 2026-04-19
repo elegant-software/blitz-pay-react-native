@@ -15,7 +15,7 @@ export const config = {
   keycloakClientId: process.env.EXPO_PUBLIC_KEYCLOAK_CLIENT_ID ?? 'blitzpay-spa',
   authBypass: process.env.EXPO_PUBLIC_AUTH_BYPASS === 'true',
   stripePublishableKey: process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? '',
-  apiUrl: process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3001',
+  apiUrl: process.env.EXPO_PUBLIC_API_URL ?? 'https://api-blitzpay-staging.elegantsoftware.de',
   trueLayerPaymentsUrl:
     process.env.EXPO_PUBLIC_TRUELAYER_PAYMENTS_URL ??
     'https://api-blitzpay-staging.elegantsoftware.de/v1/payments/request',
