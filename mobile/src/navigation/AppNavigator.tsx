@@ -18,6 +18,7 @@ import NotificationsScreen from '../screens/NotificationsScreen';
 import PaymentProcessingScreen from '../screens/PaymentProcessingScreen';
 import PaymentResultScreen from '../screens/PaymentResultScreen';
 import PaymentPendingScreen from '../screens/PaymentPendingScreen';
+import InvoicePdfPreviewScreen from '../screens/InvoicePdfPreviewScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -64,6 +65,7 @@ export default function AppNavigator() {
             component={PaymentPendingScreen}
             options={{ gestureEnabled: false }}
           />
+          <Stack.Screen name="InvoicePdfPreview" component={InvoicePdfPreviewScreen} />
         </>
       )}
     </Stack.Navigator>

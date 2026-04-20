@@ -3,9 +3,10 @@
 Operating manual for AI coding agents (Claude Code, Codex, etc.) working in this repo. Read this **and** `CONSTITUTION.md` before modifying code. `CLAUDE.md` has the architectural tour; this file is about how to behave.
 
 ## Required Reading Order
-1. `CONSTITUTION.md` — binding rules (observability, security, native config, i18n).
-2. `CLAUDE.md` — architecture, commands, screen inventory, auth flow.
-3. `specs/` — the active feature spec if the task references an issue number.
+1. `CONSTITUTION.md` — binding rules (observability, security, native config, i18n, architecture pattern).
+2. `docs/architecture.md` — canonical Feature-Based + MVVM + Controlled State Management pattern; folder structure and layer rules.
+3. `CLAUDE.md` — commands, screen inventory, auth flow, env vars.
+4. `specs/` — the active feature spec if the task references an issue number.
 
 ## Ground Rules
 

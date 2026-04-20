@@ -33,6 +33,10 @@ export type RootStackParamList = {
     currency?: string;
     merchantName?: string;
   };
+  InvoicePdfPreview: {
+    localUri: string;
+    invoiceNumber: string;
+  };
 };
 
 export type TabParamList = {

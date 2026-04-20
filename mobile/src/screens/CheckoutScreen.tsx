@@ -93,7 +93,7 @@ export default function CheckoutScreen() {
         // Fire the SDK after navigation. The tracker is the source of truth for
         // the outcome; an SDK cancellation is fed back as a recovered result so
         // the user lands on the result screen without waiting for the timeout.
-        void runTrueLayerSdk(context).catch((err) => {
+        void runTrueLayerSdk(context).catch((err: unknown) => {
           const key = err instanceof Error ? err.message : 'truelayer_reason_unknown';
           if (key === 'truelayer_cancelled' || resolveFailureReasonKey(key) === 'truelayer_cancelled') {
             paymentResultTracker.applyRecoveredResult({
