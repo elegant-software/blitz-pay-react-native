@@ -38,6 +38,9 @@ Android/iOS native config (Gradle, Info.plist, deployment target, desugar librar
 ### VI. Web and Mobile Stay in Lockstep on i18n
 Any user-facing string added to one of `src/lib/translations.ts` (web) or `mobile/src/lib/translations.ts` (mobile) must ship with both `de` and `en` values. Default language is German. No inline English literals in JSX/TSX.
 
+### VIII. Architecture Pattern is Non-Negotiable
+All React Native / Expo code in this repo follows the **Feature-Based + MVVM + Controlled State Management** pattern documented in [`docs/architecture.md`](docs/architecture.md). The three layers — View (screens/components), ViewModel (hooks), Model (services) — must stay separated. State is owned in per-feature stores under `store/`; direct mutation from Views is forbidden. New features must mirror the folder structure defined there.
+
 ### VII. Simplicity Over Abstraction
 Three similar lines beat a premature abstraction. No framework-ish helpers, feature flags, or compatibility shims until a second real caller exists. Remove dead code instead of deprecating it.
 
