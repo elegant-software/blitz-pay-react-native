@@ -1,4 +1,4 @@
-import { initPaymentSheet } from '@stripe/stripe-react-native';
+import { initPaymentSheet, CardBrand } from '@stripe/stripe-react-native';
 
 export interface StripeParams {
   paymentIntent: string;
@@ -22,7 +22,7 @@ export const initializeStripePaymentSheet = async (
       name: 'User Name', // Should ideally come from user profile
     },
     // Enable card scanning
-    preferredNetworks: ['visa', 'mastercard'], // Optional: customize based on requirements
+    preferredNetworks: [CardBrand.Visa, CardBrand.Mastercard],
   });
 
   if (error) {

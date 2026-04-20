@@ -16,7 +16,7 @@ const keyPrefix = process.env.STRIPE_SECRET_KEY ? process.env.STRIPE_SECRET_KEY.
 console.log(`Loading Stripe with key prefix: ${keyPrefix}`);
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-  apiVersion: '2025-09-30.clover',
+  apiVersion: '2026-03-25.dahlia',
 });
 
 // ---------- Braintree ----------

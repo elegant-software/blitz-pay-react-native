@@ -23,7 +23,7 @@ async function fetchJson<T>(url: string, init: RequestInit, timeoutMs = SALE_TIM
 }
 
 export async function fetchClientToken(): Promise<string> {
-  const url = `${config.apiUrl}/api/payments/braintree/client-token`;
+  const url = 'https://api-blitzpay-staging.elegantsoftware.de/v1/payments/braintree/client-token';
   const data = await fetchJson<BraintreeClientTokenResponse>(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -37,7 +37,7 @@ export async function fetchClientToken(): Promise<string> {
 export async function submitNonce(
   request: BraintreeCheckoutRequest,
 ): Promise<BraintreeCheckoutResponse> {
-  const url = `${config.apiUrl}/api/payments/braintree/checkout`;
+  const url = 'https://api-blitzpay-staging.elegantsoftware.de/v1/payments/braintree/checkout';
   return fetchJson<BraintreeCheckoutResponse>(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

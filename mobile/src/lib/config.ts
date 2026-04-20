@@ -14,6 +14,7 @@ export const config = {
   keycloakRealm: process.env.EXPO_PUBLIC_KEYCLOAK_REALM ?? 'blitzpay',
   keycloakClientId: process.env.EXPO_PUBLIC_KEYCLOAK_CLIENT_ID ?? 'blitzpay-spa',
   authBypass: process.env.EXPO_PUBLIC_AUTH_BYPASS === 'true',
+  stripePublishableKey: process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? '',
   apiUrl: process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3001',
   trueLayerPaymentsUrl:
     process.env.EXPO_PUBLIC_TRUELAYER_PAYMENTS_URL ??

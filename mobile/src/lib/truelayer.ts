@@ -26,6 +26,7 @@ type PaymentInitResponse = {
   redirectUri: string;
   environment: Environment;
   preferredCountryCode?: string;
+  paymentRequestId: string;
 };
 
 type PaymentApiResponse = Record<string, unknown>;
@@ -191,6 +192,7 @@ async function createPaymentRequest({
     redirectUri: context.redirectUri ?? redirectUri,
     preferredCountryCode: context.preferredCountryCode ?? config.trueLayerPreferredCountryCode,
     environment: context.environment ?? getEnvironment(config.trueLayerEnvironment),
+    paymentRequestId: context.paymentRequestId ?? paymentRequestId,
   };
 
   observability.info('truelayer_payment_request_succeeded', {
@@ -227,6 +229,43 @@ function normalizeResult(result: TrueLayerResult, context: { paymentId: string; 
     redirectUri: context.redirectUri,
   });
   throw new Error('truelayer_failed');
+}
+
+export async function createTrueLayerPayment(params: PaymentRequestParams): Promise<PaymentInitResponse> {
+  if (Platform.OS === 'web') {
+    throw new Error('truelayer_unsupported_platform');
+  }
+  return createPaymentRequest(params);
+}
+
+export async function runTrueLayerSdk(context: PaymentInitResponse): Promise<void> {
+  try {
+    await TrueLayerPaymentsSDKWrapper.configure(context.environment);
+  } catch (err) {
+    observability.error(
+      'truelayer_sdk_configure_failed',
+      { environment: String(context.environment), message: err instanceof Error ? err.message : String(err) },
+      err instanceof Error ? err : undefined,
+    );
+    throw new Error('truelayer_failed');
+  }
+
+  let result: TrueLayerResult;
+  try {
+    result = await TrueLayerPaymentsSDKWrapper.processPayment(
+      { paymentId: context.paymentId, resourceToken: context.resourceToken, redirectUri: context.redirectUri },
+      { shouldPresentResultScreen: true, preferredCountryCode: context.preferredCountryCode },
+    );
+  } catch (err) {
+    observability.error(
+      'truelayer_sdk_process_payment_threw',
+      { paymentId: context.paymentId, message: err instanceof Error ? err.message : String(err) },
+      err instanceof Error ? err : undefined,
+    );
+    throw new Error('truelayer_failed');
+  }
+
+  normalizeResult(result, { paymentId: context.paymentId, redirectUri: context.redirectUri });
 }
 
 export async function startTrueLayerPayment(params: PaymentRequestParams): Promise<void> {

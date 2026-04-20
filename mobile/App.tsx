@@ -71,10 +71,11 @@ export default function App() {
               urlScheme={config.trueLayerRedirectScheme} // "blitzpay"
               merchantIdentifier="merchant.app.blitzpay.mobile"
             >
-              {splashVisible && (
-                <SplashScreen onComplete={() => setSplashVisible(false)} />
-              )}
-              <AuthProvider>
+              <>
+                {splashVisible ? (
+                  <SplashScreen onComplete={() => setSplashVisible(false)} />
+                ) : null}
+                <AuthProvider>
                 <NavigationContainer
                   ref={navigationRef}
                   linking={linking}
@@ -86,7 +87,8 @@ export default function App() {
                   <PostAuthEffects />
                   <AppNavigator />
                 </NavigationContainer>
-              </AuthProvider>
+                </AuthProvider>
+              </>
             </StripeProvider>
           </LanguageProvider>
         </ErrorBoundary>
