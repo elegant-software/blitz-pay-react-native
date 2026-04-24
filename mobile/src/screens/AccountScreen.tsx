@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLanguage } from '../lib/LanguageContext';
 import { useAuth } from '../lib/auth';
+import { useGeofence } from '../hooks/useGeofence';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import type { Language } from '../lib/translations';
 
@@ -24,6 +25,22 @@ export default function AccountScreen() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [biometricEnabled, setBiometricEnabled] = useState(biometricEnrolled);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const { isMonitoring, isPolling, enable: enableGeofence, disable: disableGeofence, enablePolling, disablePolling, needsSettingsForBackground, openSettings } = useGeofence();
+
+  const handleGeofenceToggle = async (value: boolean) => {
+    if (!value) { await disableGeofence(); return; }
+    const result = await enableGeofence();
+    if (result === 'background_denied') {
+      Alert.alert(
+        '"Always" Location Required',
+        'Nearby Merchant Alerts needs "Always" location access to detect merchants in the background.\n\nGo to Settings → BlitzPay → Location → Always.',
+        [
+          { text: 'Not Now', style: 'cancel' },
+          { text: 'Open Settings', onPress: openSettings },
+        ],
+      );
+    }
+  };
 
   const handleBiometricToggle = async (value: boolean) => {
     setBiometricEnabled(value);
@@ -105,6 +122,36 @@ export default function AccountScreen() {
             />
           ),
         },
+        {
+          icon: 'location-outline',
+          label: t('geofence_enabled'),
+          onPress: needsSettingsForBackground ? openSettings : undefined,
+          showArrow: needsSettingsForBackground,
+          right: needsSettingsForBackground ? (
+            <Text style={{ fontSize: 12, color: colors.primary }}>Open Settings</Text>
+          ) : (
+            <Switch
+              value={isMonitoring}
+              onValueChange={handleGeofenceToggle}
+              trackColor={{ false: colors.gray300, true: colors.primary }}
+              thumbColor={colors.white}
+            />
+          ),
+        },
+        ...(isMonitoring ? [{
+          icon: 'timer-outline' as const,
+          label: t('geofence_polling'),
+          onPress: undefined,
+          showArrow: false,
+          right: (
+            <Switch
+              value={isPolling}
+              onValueChange={(v: boolean) => v ? enablePolling() : disablePolling()}
+              trackColor={{ false: colors.gray300, true: colors.primary }}
+              thumbColor={colors.white}
+            />
+          ),
+        }] : []),
       ],
     },
     {

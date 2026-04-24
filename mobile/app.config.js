@@ -16,7 +16,9 @@ module.exports = {
       infoPlist: {
         NSCameraUsageDescription: "Used to scan QR codes and credit cards for payments",
         NSFaceIDUsageDescription: "Used for biometric authentication",
-        UIBackgroundModes: ["remote-notification"],
+        NSLocationWhenInUseUsageDescription: "BlitzPay uses your location to find nearby merchants.",
+        NSLocationAlwaysAndWhenInUseUsageDescription: "BlitzPay monitors merchant areas in the background to alert you to offers.",
+        UIBackgroundModes: ["remote-notification", "location"],
       },
     },
     android: {
@@ -36,6 +38,11 @@ module.exports = {
         "android.permission.RECORD_AUDIO",
         "android.permission.USE_BIOMETRIC",
         "android.permission.USE_FINGERPRINT",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION",
       ],
     },
     plugins: [
@@ -65,6 +72,10 @@ module.exports = {
       ["expo-camera", { cameraPermission: "Allow BlitzPay to access your camera to scan QR codes." }],
       ["expo-local-authentication", { faceIDPermission: "Allow BlitzPay to use Face ID for authentication." }],
       "expo-secure-store",
+      ["expo-location", {
+        locationAlwaysAndWhenInUsePermission:
+          "BlitzPay monitors merchant areas in the background to alert you to offers.",
+      }],
       ["expo-notifications", { sounds: [] }],
       ["./plugins/withNdkVersion", "30.0.14904198"],
       "./plugins/withTrueLayerAndroidConfig",

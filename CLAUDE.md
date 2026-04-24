@@ -72,14 +72,11 @@ The app uses Keycloak for identity. All auth state flows through `useAuth()` fro
 
 **New screens**: `'login'` and `'signup'` are in the `Screen` union. Both are in the `showHeader`/`showBottomNav`/`showFloatingAvatar` exclusion lists (no chrome on auth screens).
 
-**Express server**: `server.ts` at project root — run with `npm run server` (port 3001). Exposes `POST /api/register` which proxies user creation to Keycloak Admin REST API using `KEYCLOAK_ADMIN_SECRET`.
-
 **Required env vars** (add to `.env`):
 ```
 VITE_KEYCLOAK_URL=http://localhost:8080
 VITE_KEYCLOAK_REALM=blitzpay
 VITE_KEYCLOAK_CLIENT_ID=blitzpay-spa
-KEYCLOAK_ADMIN_SECRET=<service-account-secret>   # server-side only, no VITE_ prefix
 ```
 
 See `specs/001-keycloak-auth-login/quickstart.md` for Keycloak server setup steps.
@@ -121,7 +118,7 @@ Set `EXPO_PUBLIC_AUTH_BYPASS=true` in `mobile/.env` to skip Keycloak entirely.
 ## Recent Changes
 - 006-braintree-paypal-sandbox: Added TypeScript 5.3, React Native 0.83.4, Expo SDK 55 + `expo-location` (^17.x), `expo-task-manager` (^12.x), `expo-notifications` (already installed)
 - 004-payment-result-notification: Added TypeScript 5.x, React Native 0.76 (Expo SDK 52) + `expo-notifications` (push registration + listeners), `expo-secure-store` (persist in-flight payment ids), native `fetch` (status polling — matches existing auth code), React Navigation v6 (deep-link to result screen)
-- 001-keycloak-auth-login: Added Keycloak ROPC auth, biometric enrollment, Express /api/register proxy
+- 001-keycloak-auth-login: Added Keycloak ROPC auth and biometric enrollment
 
 ## Active Technologies
 - TypeScript 5.3, React Native 0.83.4, Expo SDK 55 + `expo-location` (^17.x), `expo-task-manager` (^12.x), `expo-notifications` (already installed) (006-braintree-paypal-sandbox)

@@ -20,6 +20,8 @@ import { ensurePaymentsChannel } from './src/lib/notifications/channels';
 import { initPushHandlers } from './src/lib/notifications/pushHandlers';
 import { recoverInFlight } from './src/lib/payments/recoverInFlight';
 import type { RootStackParamList } from './src/types';
+// Register geofence background tasks before any React component mounts (expo-task-manager requirement)
+import './src/tasks/geofenceTask';
 
 // Keep native splash up until our custom JS splash is rendered, preventing black flash
 ExpoSplashScreen.preventAutoHideAsync();

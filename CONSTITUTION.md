@@ -48,7 +48,7 @@ Three similar lines beat a premature abstraction. No framework-ish helpers, feat
 
 - Tokens: access token in `sessionStorage` (web) / `expo-secure-store` (mobile). Never in plain `localStorage`, never in a log line, never in a query string.
 - Biometric enrollment flag is non-authoritative (`localStorage` / device-only). Server-side WebAuthn credential is the source of truth.
-- `KEYCLOAK_ADMIN_SECRET` is server-side only. Any variable used by the client is prefixed `VITE_` (web) or `EXPO_PUBLIC_` (mobile); anything else must stay on the Express side (`server.ts`).
+- Server-side secrets must never be exposed to the client. Any variable used by the client is prefixed `VITE_` (web) or `EXPO_PUBLIC_` (mobile); anything else stays on the backend only.
 - TrueLayer redirect URIs must be registered in the TrueLayer console before shipping. Scheme/host/path come from `config.ts` — mismatches are a common "payment not possible" root cause and MUST be logged explicitly (`observability.error('truelayer_redirect_mismatch', { expected, actual })`).
 
 ## Development Workflow
