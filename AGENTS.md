@@ -57,3 +57,10 @@ A task is **not** done until:
 ## When In Doubt
 
 Ask the user. Pausing to confirm costs a message; an unwanted destructive action costs work. Risky actions (destructive git, pushing, opening PRs, uploading to third parties, modifying shared CI) always require explicit authorization — prior approval does not generalize.
+
+## Active Technologies
+- TypeScript 5.3, React 19.2, React Native 0.83.4, Expo SDK 55 + React Navigation 6, Expo Location, Expo Task Manager, Expo Secure Store, existing TrueLayer/Stripe/Braintree payment integrations (008-nearby-merchant-checkout)
+- Expo Secure Store for auth/session state; controlled in-memory feature state for discovery, catalog, and baske (008-nearby-merchant-checkout)
+
+## Recent Changes
+- 008-nearby-merchant-checkout: Added TypeScript 5.3, React 19.2, React Native 0.83.4, Expo SDK 55 + React Navigation 6, Expo Location, Expo Task Manager, Expo Secure Store, existing TrueLayer/Stripe/Braintree payment integrations

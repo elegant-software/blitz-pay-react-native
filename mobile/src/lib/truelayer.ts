@@ -12,6 +12,10 @@ type PaymentRequestParams = {
   token: string | null;
   amount: number;
   merchantName: string;
+  merchantId?: string;
+  branchId?: string;
+  itemSummary?: string;
+  itemCount?: number;
   invoiceId?: string;
   user?: {
     id?: string;
@@ -88,6 +92,10 @@ async function createPaymentRequest({
   token,
   amount,
   merchantName,
+  merchantId,
+  branchId,
+  itemSummary,
+  itemCount,
   invoiceId,
   user,
 }: PaymentRequestParams): Promise<PaymentInitResponse> {
@@ -115,6 +123,10 @@ async function createPaymentRequest({
     amount,
     amountMinorUnits,
     currency: requestBody.currency,
+    merchantId: merchantId ?? null,
+    branchId: branchId ?? null,
+    itemSummary: itemSummary ?? null,
+    itemCount: itemCount ?? null,
     userDisplayName,
     redirectReturnUri: redirectUri,
     hasToken,

@@ -7,6 +7,7 @@ import {
   StyleSheet,
   Modal,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,10 +23,35 @@ import { observability } from '../lib/observability';
 import { useStripePayment } from '../hooks/useStripePayment';
 import { useBraintreePayPal } from '../hooks/useBraintreePayPal';
 import { mockCreatePaymentIntent } from '../lib/api/paymentMocks';
+import { config } from '../lib/config';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import type { RootStackNav, RootStackParamList } from '../types';
 
 type PaymentMethod = 'bank' | 'card' | 'paypal';
+
+function resolveImageUri(uri?: string): string | undefined {
+  if (!uri) return undefined;
+  if (/^https?:\/\//i.test(uri)) return uri;
+  const baseUrl = config.apiUrl.replace(/\/+$/, '');
+  const path = uri.startsWith('/') ? uri : `/${uri}`;
+  return `${baseUrl}${path}`;
+}
+
+function summarizeImageUri(uri?: string): { host: string | null; path: string | null } {
+  if (!uri) return { host: null, path: null };
+  try {
+    const parsed = new URL(uri);
+    return {
+      host: parsed.host,
+      path: parsed.pathname.slice(0, 160),
+    };
+  } catch {
+    return {
+      host: null,
+      path: uri.slice(0, 160),
+    };
+  }
+}
 
 export default function CheckoutScreen() {
   const { t } = useLanguage();
@@ -36,6 +62,11 @@ export default function CheckoutScreen() {
 
   const amount = route.params?.amount ?? 24.5;
   const merchantName = route.params?.merchantName ?? 'Merchant';
+  const merchantId = route.params?.merchantId;
+  const branchId = route.params?.branchId;
+  const basketSummary = route.params?.basketSummary;
+  const basketItemCount = route.params?.basketItemCount ?? route.params?.basketItems?.length ?? 0;
+  const basketItems = route.params?.basketItems ?? [];
   const invoiceId = route.params?.invoiceId;
 
   const { initializePayment, openPaymentSheet } = useStripePayment();
@@ -54,6 +85,10 @@ export default function CheckoutScreen() {
       method: selectedMethod,
       amount,
       merchantName,
+      merchantId: merchantId ?? null,
+      branchId: branchId ?? null,
+      basketItemCount,
+      basketSummary: basketSummary ?? null,
       invoiceId: invoiceId ?? null,
     });
 
@@ -65,6 +100,10 @@ export default function CheckoutScreen() {
           token,
           amount,
           merchantName,
+          merchantId,
+          branchId,
+          itemSummary: basketSummary,
+          itemCount: basketItemCount,
           invoiceId,
           user,
         });
@@ -78,6 +117,9 @@ export default function CheckoutScreen() {
         observability.info('checkout_confirm_succeeded', {
           method: selectedMethod,
           amount,
+          merchantId: merchantId ?? null,
+          branchId: branchId ?? null,
+          basketItemCount,
           invoiceId: invoiceId ?? null,
           paymentRequestId,
         });
@@ -107,7 +149,13 @@ export default function CheckoutScreen() {
       }
 
       if (selectedMethod === 'card') {
-        const stripeParams = await mockCreatePaymentIntent({ amount, currency: 'EUR' });
+        const stripeParams = await mockCreatePaymentIntent({
+          amount,
+          currency: 'EUR',
+          merchantId,
+          branchId,
+          productId: basketItems[0]?.productId,
+        });
         await initializePayment(stripeParams);
         const result = await openPaymentSheet();
 
@@ -115,6 +163,9 @@ export default function CheckoutScreen() {
           observability.info('checkout_confirm_succeeded', {
             method: selectedMethod,
             amount,
+            merchantId: merchantId ?? null,
+            branchId: branchId ?? null,
+            basketItemCount,
             invoiceId: invoiceId ?? null,
           });
           setShowSuccess(true);
@@ -136,6 +187,9 @@ export default function CheckoutScreen() {
           observability.info('checkout_confirm_succeeded', {
             method: selectedMethod,
             amount,
+            merchantId: merchantId ?? null,
+            branchId: branchId ?? null,
+            basketItemCount,
             invoiceId: invoiceId ?? null,
             transactionId: result.transactionId ?? null,
           });
@@ -145,6 +199,9 @@ export default function CheckoutScreen() {
           observability.warn('checkout_confirm_failed', {
             method: selectedMethod,
             amount,
+            merchantId: merchantId ?? null,
+            branchId: branchId ?? null,
+            basketItemCount,
             invoiceId: invoiceId ?? null,
             reasonKey: 'paypal_failed',
             message: result.error ?? 'paypal_failed',
@@ -155,6 +212,9 @@ export default function CheckoutScreen() {
           observability.info('checkout_confirm_cancelled', {
             method: selectedMethod,
             amount,
+            merchantId: merchantId ?? null,
+            branchId: branchId ?? null,
+            basketItemCount,
             invoiceId: invoiceId ?? null,
           });
           setProcessing(false);
@@ -167,6 +227,9 @@ export default function CheckoutScreen() {
       observability.info('checkout_confirm_succeeded', {
         method: selectedMethod,
         amount,
+        merchantId: merchantId ?? null,
+        branchId: branchId ?? null,
+        basketItemCount,
         invoiceId: invoiceId ?? null,
       });
       setShowSuccess(true);
@@ -183,6 +246,10 @@ export default function CheckoutScreen() {
         {
           method: selectedMethod,
           amount,
+          merchantId: merchantId ?? null,
+          branchId: branchId ?? null,
+          basketItemCount,
+          basketSummary: basketSummary ?? null,
           invoiceId: invoiceId ?? null,
           reasonKey: key,
           message: rawMessage,
@@ -245,6 +312,65 @@ export default function CheckoutScreen() {
           <Text style={styles.amountLabel}>{t('total_due')}</Text>
           <Text style={styles.amountValue}>€{amount.toFixed(2)}</Text>
           <Text style={styles.amountMerchant}>{merchantName}</Text>
+          {basketSummary ? <Text style={styles.amountSummary}>{basketSummary}</Text> : null}
+          {basketItems.length > 0 ? (
+            <View style={styles.basketSummaryCard}>
+              <Text style={styles.basketSummaryTitle}>{t('selected_items_count', { count: basketItemCount })}</Text>
+              {basketItems.map((item) => {
+                const productImageUri = resolveImageUri(item.imageUrl);
+                const imageMeta = summarizeImageUri(productImageUri);
+                return (
+                <View key={item.productId} style={styles.basketRow}>
+                  <View style={styles.basketRowMain}>
+                    {productImageUri ? (
+                      <Image
+                        source={{
+                          uri: productImageUri,
+                          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+                        }}
+                        style={styles.basketRowImage}
+                        resizeMode="cover"
+                        onLoadStart={() => {
+                          observability.info('checkout_product_image_load_started', {
+                            merchantId: merchantId ?? null,
+                            branchId: branchId ?? null,
+                            productId: item.productId,
+                            imageHost: imageMeta.host,
+                            imagePath: imageMeta.path,
+                          });
+                        }}
+                        onLoad={() => {
+                          observability.info('checkout_product_image_loaded', {
+                            merchantId: merchantId ?? null,
+                            branchId: branchId ?? null,
+                            productId: item.productId,
+                            imageHost: imageMeta.host,
+                            imagePath: imageMeta.path,
+                          });
+                        }}
+                        onError={(event) => {
+                          observability.warn('checkout_product_image_failed', {
+                            merchantId: merchantId ?? null,
+                            branchId: branchId ?? null,
+                            productId: item.productId,
+                            imageHost: imageMeta.host,
+                            imagePath: imageMeta.path,
+                            reason: event.nativeEvent.error ?? 'unknown_image_error',
+                          });
+                        }}
+                      />
+                    ) : (
+                      <View style={styles.basketRowIcon}>
+                        <Ionicons name="cube-outline" size={16} color={colors.gray600} />
+                      </View>
+                    )}
+                    <Text style={styles.basketRowName}>{item.quantity}× {item.productName}</Text>
+                  </View>
+                  <Text style={styles.basketRowPrice}>€{item.lineTotal.toFixed(2)}</Text>
+                </View>
+              )})}
+            </View>
+          ) : null}
         </View>
 
         {/* Payment methods */}
@@ -373,6 +499,61 @@ const styles = StyleSheet.create({
   amountLabel: { fontSize: 13, color: 'rgba(255,255,255,0.6)', marginBottom: 4 },
   amountValue: { fontSize: 40, fontWeight: '800', color: colors.white, letterSpacing: -1 },
   amountMerchant: { fontSize: 14, color: 'rgba(255,255,255,0.6)', marginTop: 4 },
+  amountSummary: {
+    marginTop: 8,
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.8)',
+    textAlign: 'center',
+  },
+  basketSummaryCard: {
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
+    width: '100%',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.15)',
+    gap: spacing.xs,
+  },
+  basketSummaryTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.white,
+  },
+  basketRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  basketRowMain: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  basketRowImage: {
+    width: 32,
+    height: 32,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+  },
+  basketRowIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  basketRowName: {
+    flex: 1,
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.8)',
+  },
+  basketRowPrice: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.white,
+  },
   section: { paddingHorizontal: spacing.md, marginBottom: spacing.md },
   sectionTitle: { fontSize: 15, fontWeight: '700', color: colors.onSurface, marginBottom: spacing.sm },
   methodRow: {
