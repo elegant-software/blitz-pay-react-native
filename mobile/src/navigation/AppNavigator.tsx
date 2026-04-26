@@ -19,6 +19,7 @@ import PaymentProcessingScreen from '../screens/PaymentProcessingScreen';
 import PaymentResultScreen from '../screens/PaymentResultScreen';
 import PaymentPendingScreen from '../screens/PaymentPendingScreen';
 import InvoicePdfPreviewScreen from '../screens/InvoicePdfPreviewScreen';
+import ProductDetailScreen from '../screens/ProductDetailScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -66,6 +67,7 @@ export default function AppNavigator() {
             options={{ gestureEnabled: false }}
           />
           <Stack.Screen name="InvoicePdfPreview" component={InvoicePdfPreviewScreen} />
+          <Stack.Screen name="ProductDetail" component={ProductDetailScreen} />
         </>
       )}
     </Stack.Navigator>

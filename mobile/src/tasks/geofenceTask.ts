@@ -1,6 +1,7 @@
 import * as TaskManager from 'expo-task-manager';
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
+import { markNearbyMerchantRefreshNeeded } from '../features/nearby-merchants/services/nearbyMerchantService';
 import { reportProximityIfNotCooledDown } from '../services/geofence';
 import { GEOFENCE_TASK, GEOFENCE_POLL_TASK } from '../lib/geofenceConstants';
 
@@ -27,6 +28,7 @@ TaskManager.defineTask(GEOFENCE_TASK, async ({ data, error }) => {
   });
 
   if (response?.action === 'notify') {
+    await markNearbyMerchantRefreshNeeded();
     await Notifications.scheduleNotificationAsync({
       content: {
         title: 'BlitzPay',
@@ -77,6 +79,7 @@ TaskManager.defineTask(GEOFENCE_POLL_TASK, async ({ data, error }) => {
         longitude: position.coords.longitude,
       });
       if (response?.action === 'notify') {
+        await markNearbyMerchantRefreshNeeded();
         await Notifications.scheduleNotificationAsync({
           content: {
             title: 'BlitzPay',

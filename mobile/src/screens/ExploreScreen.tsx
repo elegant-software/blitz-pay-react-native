@@ -7,20 +7,16 @@ import {
   ScrollView,
   StyleSheet,
   Image,
+  ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useLanguage } from '../lib/LanguageContext';
 import { useAuth } from '../lib/auth';
+import { useNearbyMerchants } from '../features/nearby-merchants/hooks/useNearbyMerchants';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import type { RootStackNav } from '../types';
-
-const MERCHANTS = [
-  { id: '1', name: 'Artisan Bakery Co.', category: 'Food & Drink', rating: 4.8, distance: '0.3 km', open_until: '20:00', verified: true },
-  { id: '2', name: 'The Vinyl Record Shop', category: 'Music & Entertainment', rating: 4.6, distance: '0.7 km', open_until: '19:00', verified: true },
-  { id: '3', name: 'Urban Garden Centre', category: 'Home & Garden', rating: 4.5, distance: '1.2 km', open_until: '18:00', verified: false },
-];
 
 const EVENTS = [
   { id: '1', title: 'After Hours: Modern Art', venue: 'Tate Modern', price: '€45', color: '#5856D6' },
@@ -40,6 +36,7 @@ export default function ExploreScreen() {
   const { user } = useAuth();
   const navigation = useNavigation<RootStackNav>();
   const insets = useSafeAreaInsets();
+  const { merchants, loading, errorKey, locationLabel, permissionDenied, refresh } = useNearbyMerchants();
 
   return (
     <ScrollView
@@ -47,9 +44,7 @@ export default function ExploreScreen() {
       contentContainerStyle={{ paddingBottom: 90 + insets.bottom }}
       showsVerticalScrollIndicator={false}
     >
-      {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-        {/* Left: avatar + greeting (matches web layout) */}
         <View style={styles.headerLeft}>
           <Image
             source={{ uri: 'https://i.pravatar.cc/150?img=47' }}
@@ -57,10 +52,9 @@ export default function ExploreScreen() {
           />
           <View>
             <Text style={styles.greeting}>{t('happening_now')}</Text>
-            <Text style={styles.locationLabel}>📍 London, UK</Text>
+            <Text style={styles.locationLabel}>📍 {loading ? t('nearby_merchants_loading') : locationLabel}</Text>
           </View>
         </View>
-        {/* Right: BlitzPay brand + notifications */}
         <View style={styles.headerRight}>
           <Text style={styles.brandMark}>⚡ BlitzPay</Text>
           <TouchableOpacity
@@ -73,7 +67,6 @@ export default function ExploreScreen() {
         </View>
       </View>
 
-      {/* Search */}
       <View style={styles.searchContainer}>
         <Ionicons name="search-outline" size={18} color={colors.gray500} style={styles.searchIcon} />
         <TextInput
@@ -83,7 +76,6 @@ export default function ExploreScreen() {
         />
       </View>
 
-      {/* Quick Actions */}
       <View style={styles.quickActions}>
         {QUICK_ACTIONS.map((action) => (
           <TouchableOpacity
@@ -100,7 +92,6 @@ export default function ExploreScreen() {
         ))}
       </View>
 
-      {/* Events */}
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>{t('happening_now')}</Text>
         <TouchableOpacity>
@@ -123,44 +114,80 @@ export default function ExploreScreen() {
         ))}
       </ScrollView>
 
-      {/* Nearby Merchants */}
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>{t('nearby_merchants')}</Text>
-        <TouchableOpacity>
-          <Text style={styles.seeAll}>{t('see_all')}</Text>
+        <TouchableOpacity onPress={refresh}>
+          <Text style={styles.seeAll}>{t('retry')}</Text>
         </TouchableOpacity>
       </View>
 
-      {MERCHANTS.map((merchant) => (
-        <TouchableOpacity
-          key={merchant.id}
-          style={styles.merchantCard}
-          onPress={() => navigation.navigate('Merchant', { merchantId: merchant.id, merchantName: merchant.name })}
-          activeOpacity={0.85}
-        >
-          <View style={styles.merchantIconBox}>
-            <Ionicons name="storefront-outline" size={24} color={colors.secondary} />
-          </View>
-          <View style={styles.merchantInfo}>
-            <View style={styles.merchantNameRow}>
-              <Text style={styles.merchantName}>{merchant.name}</Text>
-              {merchant.verified && (
-                <Ionicons name="checkmark-circle" size={14} color={colors.primary} />
+      {loading ? (
+        <View style={styles.stateCard}>
+          <ActivityIndicator color={colors.primary} />
+          <Text style={styles.stateTitle}>{t('nearby_merchants_loading')}</Text>
+        </View>
+      ) : errorKey ? (
+        <View style={styles.stateCard}>
+          <Ionicons name="location-outline" size={24} color={colors.secondary} />
+          <Text style={styles.stateTitle}>
+            {permissionDenied ? t('location_permission_required') : t(errorKey as Parameters<typeof t>[0])}
+          </Text>
+          <Text style={styles.stateBody}>
+            {permissionDenied ? t('location_permission_body') : t('nearby_merchants_empty_body')}
+          </Text>
+          <TouchableOpacity style={styles.retryButton} onPress={refresh}>
+            <Text style={styles.retryButtonText}>{t('retry')}</Text>
+          </TouchableOpacity>
+        </View>
+      ) : merchants.length === 0 ? (
+        <View style={styles.stateCard}>
+          <Ionicons name="storefront-outline" size={24} color={colors.secondary} />
+          <Text style={styles.stateTitle}>{t('nearby_merchants_empty_title')}</Text>
+          <Text style={styles.stateBody}>{t('nearby_merchants_empty_body')}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={refresh}>
+            <Text style={styles.retryButtonText}>{t('retry')}</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        merchants.map((merchant) => (
+          <TouchableOpacity
+            key={merchant.merchantId}
+            style={styles.merchantCard}
+            onPress={() =>
+              navigation.navigate('Merchant', {
+                merchantId: merchant.merchantId,
+                merchantName: merchant.displayName,
+                distanceMeters: merchant.distanceMeters,
+              })
+            }
+            activeOpacity={0.85}
+          >
+            <View style={styles.merchantIconBox}>
+              {merchant.logoUrl ? (
+                <Image source={{ uri: merchant.logoUrl }} style={styles.merchantLogo} resizeMode="contain" />
+              ) : (
+                <Ionicons name="storefront-outline" size={24} color={colors.secondary} />
               )}
             </View>
-            <Text style={styles.merchantCategory}>{merchant.category}</Text>
-            <View style={styles.merchantMeta}>
-              <Ionicons name="star" size={12} color="#FF9500" />
-              <Text style={styles.merchantRating}>{merchant.rating}</Text>
-              <Text style={styles.merchantDot}>·</Text>
-              <Text style={styles.merchantDistance}>{merchant.distance}</Text>
-              <Text style={styles.merchantDot}>·</Text>
-              <Text style={styles.merchantOpen}>{t('open_until')} {merchant.open_until}</Text>
+            <View style={styles.merchantInfo}>
+              <View style={styles.merchantNameRow}>
+                <Text style={styles.merchantName}>{merchant.displayName}</Text>
+                <Ionicons name="checkmark-circle" size={14} color={colors.primary} />
+              </View>
+              <Text style={styles.merchantCategory}>{t('nearby_merchant_live')}</Text>
+              <View style={styles.merchantMeta}>
+                <Ionicons name="navigate-outline" size={12} color={colors.gray600} />
+                <Text style={styles.merchantDistance}>{merchant.distanceLabel}</Text>
+                <Text style={styles.merchantDot}>·</Text>
+                <Text style={styles.merchantOpen}>
+                  {t('merchant_radius_meters', { count: merchant.geofenceRadiusMeters })}
+                </Text>
+              </View>
             </View>
-          </View>
-          <Ionicons name="chevron-forward" size={18} color={colors.gray400} />
-        </TouchableOpacity>
-      ))}
+            <Ionicons name="chevron-forward" size={18} color={colors.gray400} />
+          </TouchableOpacity>
+        ))
+      )}
     </ScrollView>
   );
 }
@@ -259,16 +286,16 @@ const styles = StyleSheet.create({
   quickActionIcon: {
     width: 52,
     height: 52,
-    borderRadius: radius.xl,
-    backgroundColor: `${colors.primary}15`,
+    borderRadius: 18,
+    backgroundColor: colors.surface,
     justifyContent: 'center',
     alignItems: 'center',
+    ...shadow.sm,
   },
   quickActionLabel: {
-    fontSize: 11,
-    fontWeight: '500',
+    fontSize: 12,
+    fontWeight: '600',
     color: colors.gray700,
-    textAlign: 'center',
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -278,58 +305,59 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   sectionTitle: {
-    fontSize: 17,
-    fontWeight: '700',
+    fontSize: 18,
+    fontWeight: '800',
     color: colors.onSurface,
   },
   seeAll: {
-    fontSize: 14,
+    fontSize: 13,
+    fontWeight: '600',
     color: colors.primary,
-    fontWeight: '500',
   },
   eventsRow: {
     paddingHorizontal: spacing.md,
-    gap: spacing.sm,
-    marginBottom: spacing.lg,
+    gap: spacing.md,
+    marginBottom: spacing.xl,
   },
   eventCard: {
-    width: 180,
-    borderRadius: radius.xl,
+    width: 210,
+    borderRadius: radius.xxl,
     padding: spacing.md,
-    justifyContent: 'flex-end',
-    minHeight: 130,
+    justifyContent: 'space-between',
+    ...shadow.md,
   },
   eventTitle: {
-    fontSize: 15,
-    fontWeight: '700',
     color: colors.white,
-    marginBottom: 4,
+    fontSize: 18,
+    fontWeight: '800',
+    lineHeight: 22,
+    marginBottom: spacing.sm,
   },
   eventVenue: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.8)',
-    marginBottom: 8,
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: 13,
+    marginBottom: spacing.md,
   },
   eventPriceRow: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
+    alignItems: 'center',
   },
   eventPrice: {
-    fontSize: 16,
-    fontWeight: '800',
     color: colors.white,
+    fontSize: 17,
+    fontWeight: '800',
   },
   eventPendingBadge: {
-    backgroundColor: 'rgba(255,255,255,0.25)',
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderRadius: radius.full,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
   },
   eventPendingText: {
-    fontSize: 10,
-    fontWeight: '700',
     color: colors.white,
+    fontSize: 11,
+    fontWeight: '700',
   },
   merchantCard: {
     flexDirection: 'row',
@@ -337,20 +365,26 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     marginHorizontal: spacing.md,
     marginBottom: spacing.sm,
-    borderRadius: radius.xl,
     padding: spacing.md,
-    ...shadow.sm,
+    borderRadius: radius.xl,
     borderWidth: 1,
     borderColor: colors.gray200,
+    ...shadow.sm,
   },
   merchantIconBox: {
-    width: 48,
-    height: 48,
-    borderRadius: radius.lg,
-    backgroundColor: `${colors.secondary}15`,
+    width: 52,
+    height: 52,
+    borderRadius: 18,
+    backgroundColor: `${colors.secondary}12`,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: spacing.sm,
+    marginRight: spacing.md,
+    overflow: 'hidden',
+  },
+  merchantLogo: {
+    width: 52,
+    height: 52,
+    borderRadius: 18,
   },
   merchantInfo: {
     flex: 1,
@@ -358,39 +392,66 @@ const styles = StyleSheet.create({
   merchantNameRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 6,
+    marginBottom: 4,
   },
   merchantName: {
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: '700',
     color: colors.onSurface,
   },
   merchantCategory: {
     fontSize: 12,
     color: colors.gray600,
-    marginTop: 1,
+    marginBottom: 6,
   },
   merchantMeta: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    marginTop: 4,
-  },
-  merchantRating: {
-    fontSize: 12,
-    color: colors.gray700,
-    fontWeight: '500',
-  },
-  merchantDot: {
-    color: colors.gray400,
-    fontSize: 12,
   },
   merchantDistance: {
     fontSize: 12,
-    color: colors.gray600,
+    fontWeight: '600',
+    color: colors.gray700,
+  },
+  merchantDot: {
+    fontSize: 12,
+    color: colors.gray500,
   },
   merchantOpen: {
     fontSize: 12,
-    color: colors.success,
+    color: colors.gray600,
+  },
+  stateCard: {
+    marginHorizontal: spacing.md,
+    padding: spacing.lg,
+    borderRadius: radius.xl,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    gap: spacing.sm,
+    ...shadow.sm,
+  },
+  stateTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.onSurface,
+    textAlign: 'center',
+  },
+  stateBody: {
+    fontSize: 13,
+    color: colors.gray600,
+    textAlign: 'center',
+  },
+  retryButton: {
+    marginTop: spacing.xs,
+    backgroundColor: colors.primary,
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  retryButtonText: {
+    color: colors.black,
+    fontWeight: '700',
   },
 });

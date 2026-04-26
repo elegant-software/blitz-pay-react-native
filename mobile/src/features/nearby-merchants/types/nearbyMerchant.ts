@@ -1,0 +1,25 @@
+export interface NearbyMerchant {
+  merchantId: string;
+  displayName: string;
+  latitude: number;
+  longitude: number;
+  distanceMeters: number;
+  geofenceRadiusMeters: number;
+  googlePlaceId?: string;
+  logoUrl?: string;
+}
+
+export interface NearbyMerchantQuery {
+  latitude: number;
+  longitude: number;
+  radiusMeters?: number;
+}
+
+export interface GeofenceRegion {
+  regionId: string;
+  displayName: string;
+  latitude: number;
+  longitude: number;
+  radiusMeters: number;
+  distanceMeters?: number;
+}

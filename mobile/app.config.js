@@ -7,6 +7,7 @@ module.exports = {
     orientation: "portrait",
     platforms: ["ios", "android", "web"],
     userInterfaceStyle: "light",
+    icon: "./assets/app-icon.png",
     splash: {
       backgroundColor: "#000000",
     },
@@ -23,6 +24,7 @@ module.exports = {
     },
     android: {
       adaptiveIcon: {
+        foregroundImage: "./assets/adaptive-icon.png",
         backgroundColor: "#000000",
       },
       splash: {
