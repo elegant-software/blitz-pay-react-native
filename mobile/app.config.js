@@ -17,6 +17,7 @@ module.exports = {
       infoPlist: {
         NSCameraUsageDescription: "Used to scan QR codes and credit cards for payments",
         NSFaceIDUsageDescription: "Used for biometric authentication",
+        NSMicrophoneUsageDescription: "BlitzPay uses your microphone to send voice queries to the AI assistant.",
         NSLocationWhenInUseUsageDescription: "BlitzPay uses your location to find nearby merchants.",
         NSLocationAlwaysAndWhenInUseUsageDescription: "BlitzPay monitors merchant areas in the background to alert you to offers.",
         UIBackgroundModes: ["remote-notification", "location"],
@@ -79,6 +80,7 @@ module.exports = {
           "BlitzPay monitors merchant areas in the background to alert you to offers.",
       }],
       ["expo-notifications", { sounds: [] }],
+      "expo-audio",
       ["./plugins/withNdkVersion", "30.0.14904198"],
       "./plugins/withTrueLayerAndroidConfig",
       "expo-font",

@@ -1,162 +1,157 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   Animated,
   PanResponder,
   TouchableOpacity,
   View,
-  Text,
   Image,
   StyleSheet,
   Dimensions,
-  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, radius } from '../lib/theme';
+import { colors } from '../lib/theme';
+import { useVoiceAssistantContext } from '../lib/VoiceAssistantContext';
 
-const AVATAR_SMALL = 72;
-const AVATAR_LARGE_W = 200;
-const AVATAR_LARGE_H = 280;
+const SIZE = 72;
+const RING_SIZE = SIZE + 16; // ring sits just outside the avatar
 const { width: SW, height: SH } = Dimensions.get('window');
 
-// Default start: bottom-left
-const START_X = 16;
-const START_Y = SH - 200;
+export default function FloatingAvatar() {
+  const { micState, toggleRecording } = useVoiceAssistantContext();
+  const isListening = micState === 'recording';
+  const isProcessing = micState === 'processing';
+  const isError = micState === 'error';
 
-interface FloatingAvatarProps {
-  onPress: () => void;
-}
+  // Dragging
+  const pan = useRef(new Animated.ValueXY({ x: 16, y: SH - 200 })).current;
+  const panOffset = useRef({ x: 16, y: SH - 200 });
+  const isDragging = useRef(false);
 
-export default function FloatingAvatar({ onPress }: FloatingAvatarProps) {
-  const [isLarge, setIsLarge] = useState(false);
-  const [muted, setMuted] = useState(true);
+  // Rotating arc — listening (fast) or processing (slow)
+  const arcRotation = useRef(new Animated.Value(0)).current;
 
-  // Position
-  const pan = useRef(new Animated.ValueXY({ x: START_X, y: START_Y })).current;
-  const panOffset = useRef({ x: START_X, y: START_Y });
+  // Processing: avatar dim
+  const dimOpacity = useRef(new Animated.Value(1)).current;
 
-  // Animated size
-  const widthAnim = useRef(new Animated.Value(AVATAR_SMALL)).current;
-  const heightAnim = useRef(new Animated.Value(AVATAR_SMALL)).current;
-  const borderAnim = useRef(new Animated.Value(radius.full)).current;
-
-  // Pulse ring opacity
-  const pulseAnim = useRef(new Animated.Value(0)).current;
-
-  React.useEffect(() => {
-    if (!muted) {
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulseAnim, { toValue: 0.4, duration: 900, useNativeDriver: true }),
-          Animated.timing(pulseAnim, { toValue: 0, duration: 900, useNativeDriver: true }),
-        ])
-      ).start();
-    } else {
-      pulseAnim.stopAnimation();
-      pulseAnim.setValue(0);
+  useEffect(() => {
+    if (isListening) {
+      arcRotation.setValue(0);
+      const arc = Animated.loop(
+        Animated.timing(arcRotation, { toValue: 1, duration: 1200, useNativeDriver: true }),
+      );
+      arc.start();
+      dimOpacity.setValue(1);
+      return () => { arc.stop(); arcRotation.setValue(0); };
     }
-  }, [muted]);
 
-  const toggleSize = () => {
-    const toW = isLarge ? AVATAR_SMALL : AVATAR_LARGE_W;
-    const toH = isLarge ? AVATAR_SMALL : AVATAR_LARGE_H;
-    const toBorder = isLarge ? radius.full : radius.xxl;
+    if (isProcessing) {
+      Animated.timing(dimOpacity, { toValue: 0.55, duration: 300, useNativeDriver: true }).start();
+      arcRotation.setValue(0);
+      const arc = Animated.loop(
+        Animated.timing(arcRotation, { toValue: 1, duration: 1800, useNativeDriver: true }),
+      );
+      arc.start();
+      return () => {
+        arc.stop();
+        arcRotation.setValue(0);
+        Animated.timing(dimOpacity, { toValue: 1, duration: 200, useNativeDriver: true }).start();
+      };
+    }
 
-    Animated.spring(widthAnim, { toValue: toW, useNativeDriver: false, damping: 20, stiffness: 200 }).start();
-    Animated.spring(heightAnim, { toValue: toH, useNativeDriver: false, damping: 20, stiffness: 200 }).start();
-    Animated.spring(borderAnim, { toValue: toBorder, useNativeDriver: false, damping: 20, stiffness: 200 }).start();
+    // Idle / error
+    arcRotation.setValue(0);
+    Animated.timing(dimOpacity, { toValue: 1, duration: 200, useNativeDriver: true }).start();
+  }, [micState]);
 
-    setIsLarge(!isLarge);
-  };
+  const spin = arcRotation.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
 
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, gs) =>
-        Math.abs(gs.dx) > 3 || Math.abs(gs.dy) > 3,
+      onMoveShouldSetPanResponder: (_, gs) => Math.abs(gs.dx) > 4 || Math.abs(gs.dy) > 4,
       onPanResponderGrant: () => {
+        isDragging.current = false;
         pan.setOffset({ x: panOffset.current.x, y: panOffset.current.y });
         pan.setValue({ x: 0, y: 0 });
       },
-      onPanResponderMove: Animated.event([null, { dx: pan.x, dy: pan.y }], {
-        useNativeDriver: false,
-      }),
+      onPanResponderMove: (_, gs) => {
+        if (Math.abs(gs.dx) > 4 || Math.abs(gs.dy) > 4) isDragging.current = true;
+        Animated.event([null, { dx: pan.x, dy: pan.y }], { useNativeDriver: false })(_, gs);
+      },
       onPanResponderRelease: (_, gs) => {
         pan.flattenOffset();
-        // Clamp to screen bounds
-        const newX = Math.max(0, Math.min(SW - AVATAR_SMALL, panOffset.current.x + gs.dx));
-        const newY = Math.max(60, Math.min(SH - AVATAR_SMALL - 80, panOffset.current.y + gs.dy));
+        const newX = Math.max(0, Math.min(SW - SIZE, panOffset.current.x + gs.dx));
+        const newY = Math.max(60, Math.min(SH - SIZE - 80, panOffset.current.y + gs.dy));
         panOffset.current = { x: newX, y: newY };
-        Animated.spring(pan, {
-          toValue: { x: newX, y: newY },
-          useNativeDriver: false,
-          damping: 20,
-        }).start();
+        Animated.spring(pan, { toValue: { x: newX, y: newY }, useNativeDriver: false, damping: 20 }).start();
       },
-    })
+    }),
   ).current;
+
+  const handlePress = () => {
+    if (isDragging.current) return;
+    void toggleRecording();
+  };
+
+  const borderColor = isListening ? colors.primary
+    : isError ? colors.error
+    : 'rgba(255,255,255,0.25)';
+
+  const glowOpacity = isListening ? 1 : 0;
 
   return (
     <Animated.View
       style={[styles.wrapper, { transform: pan.getTranslateTransform() }]}
       {...panResponder.panHandlers}
     >
-      {/* Main avatar body */}
+      {/* Rotating arc — listening (fast) or processing (slow) */}
+      {(isListening || isProcessing) && (
+        <Animated.View style={[styles.arcRing, { transform: [{ rotate: spin }] }]}>
+          <View style={[
+            styles.arcTrack,
+            { borderTopColor: isProcessing ? colors.secondary : colors.primary },
+          ]} />
+        </Animated.View>
+      )}
+
+      {/* Avatar */}
       <Animated.View
         style={[
-          styles.avatarBody,
+          styles.avatar,
           {
-            width: widthAnim,
-            height: heightAnim,
-            borderRadius: borderAnim,
+            borderColor,
+            shadowOpacity: glowOpacity * 0.9,
           },
         ]}
       >
-        <Image
-          source={{ uri: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=400&h=600' }}
-          style={styles.avatarImage}
-          resizeMode="cover"
-        />
+        <TouchableOpacity style={StyleSheet.absoluteFillObject} onPress={handlePress} activeOpacity={0.85} />
+        <Animated.View style={[StyleSheet.absoluteFillObject, { opacity: dimOpacity }]}>
+          <Image
+            source={{ uri: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=400&h=600' }}
+            style={styles.image}
+            resizeMode="cover"
+          />
+        </Animated.View>
 
-        {/* Overlay tint */}
-        <View style={[styles.overlay, { opacity: muted ? 0.05 : 0.15 }]} />
-
-        {/* Listening indicator (large mode) */}
-        {isLarge && !muted && (
-          <View style={styles.listeningOverlay}>
-            <View style={styles.listeningBars}>
-              {[1, 2, 3, 4, 5].map((b) => (
-                <View key={b} style={[styles.bar, { height: 8 + b * 5 }]} />
-              ))}
-            </View>
-          </View>
-        )}
-
-        {/* Tap to open assistant (small mode) */}
-        {!isLarge && (
-          <TouchableOpacity style={StyleSheet.absoluteFillObject} onPress={onPress} />
+        {/* Cyan listening tint */}
+        {isListening && (
+          <View style={styles.listeningTint} />
         )}
       </Animated.View>
 
-      {/* Pulse ring when active */}
-      {!isLarge && (
-        <Animated.View style={[styles.pulseRing, { opacity: pulseAnim }]} />
-      )}
-
-      {/* Mute badge */}
-      {!isLarge && (
-        <TouchableOpacity
-          style={[styles.badge, { backgroundColor: muted ? colors.error : colors.success }]}
-          onPress={() => setMuted(!muted)}
-        >
-          <Ionicons name={muted ? 'mic-off' : 'mic'} size={12} color={colors.white} />
-        </TouchableOpacity>
-      )}
-
-      {/* Expand / collapse button */}
-      <TouchableOpacity style={styles.expandBtn} onPress={toggleSize}>
+      {/* Badge: mic state indicator */}
+      <TouchableOpacity
+        style={[
+          styles.badge,
+          isListening && styles.badgeListening,
+          isProcessing && styles.badgeProcessing,
+          isError && styles.badgeError,
+        ]}
+        onPress={handlePress}
+      >
         <Ionicons
-          name={isLarge ? 'contract-outline' : 'expand-outline'}
-          size={13}
+          name={isListening ? 'stop' : isError ? 'mic-off' : 'mic-outline'}
+          size={11}
           color={colors.white}
         />
       </TouchableOpacity>
@@ -168,57 +163,49 @@ const styles = StyleSheet.create({
   wrapper: {
     position: 'absolute',
     zIndex: 999,
+    width: SIZE,
+    height: SIZE,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  avatarBody: {
+  arcRing: {
+    position: 'absolute',
+    width: RING_SIZE,
+    height: RING_SIZE,
+    borderRadius: RING_SIZE / 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  arcTrack: {
+    width: RING_SIZE,
+    height: RING_SIZE,
+    borderRadius: RING_SIZE / 2,
+    borderWidth: 3,
+    borderTopColor: colors.primary,   // overridden per state
+    borderRightColor: 'transparent',
+    borderBottomColor: 'transparent',
+    borderLeftColor: 'transparent',
+  },
+  avatar: {
+    width: SIZE,
+    height: SIZE,
+    borderRadius: SIZE / 2,
     overflow: 'hidden',
-    borderWidth: 2,
-    borderColor: colors.primary,
-    backgroundColor: colors.onSurface,
-    // shadow
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
+    borderWidth: 2.5,
+    // Glow
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0,
+    shadowRadius: 14,
     elevation: 12,
   },
-  avatarImage: {
+  image: {
     width: '100%',
     height: '100%',
   },
-  overlay: {
+  listeningTint: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: colors.primary,
-  },
-  listeningOverlay: {
-    position: 'absolute',
-    bottom: 16,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-  },
-  listeningBars: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 3,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    borderRadius: radius.full,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  bar: {
-    width: 4,
-    borderRadius: 2,
-    backgroundColor: colors.primary,
-  },
-  pulseRing: {
-    position: 'absolute',
-    top: -6,
-    left: -6,
-    width: AVATAR_SMALL + 12,
-    height: AVATAR_SMALL + 12,
-    borderRadius: (AVATAR_SMALL + 12) / 2,
-    borderWidth: 2,
-    borderColor: colors.primary,
+    backgroundColor: `${colors.primary}22`,
   },
   badge: {
     position: 'absolute',
@@ -231,20 +218,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 2,
     borderColor: colors.white,
+    backgroundColor: 'rgba(0,0,0,0.55)',
     zIndex: 10,
   },
-  expandBtn: {
-    position: 'absolute',
-    bottom: -8,
-    right: -8,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: colors.white,
-    zIndex: 10,
-  },
+  badgeListening: { backgroundColor: colors.primary },
+  badgeProcessing: { backgroundColor: colors.secondary },
+  badgeError: { backgroundColor: colors.error },
 });

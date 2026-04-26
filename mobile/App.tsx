@@ -18,6 +18,9 @@ import { initObservability } from './src/lib/observability';
 import { config } from './src/lib/config';
 import { ensurePaymentsChannel } from './src/lib/notifications/channels';
 import { initPushHandlers } from './src/lib/notifications/pushHandlers';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
+
+const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
 import { recoverInFlight } from './src/lib/payments/recoverInFlight';
 import type { RootStackParamList } from './src/types';
 // Register geofence background tasks before any React component mounts (expo-task-manager requirement)
@@ -58,7 +61,7 @@ export default function App() {
 
   useEffect(() => {
     initObservability();
-    void ensurePaymentsChannel();
+    if (!isExpoGo) void ensurePaymentsChannel();
     // Custom splash is now rendered — safe to dismiss the native one
     void ExpoSplashScreen.hideAsync();
   }, []);
@@ -82,7 +85,7 @@ export default function App() {
                   ref={navigationRef}
                   linking={linking}
                   onReady={() => {
-                    initPushHandlers(navigationRef);
+                    if (!isExpoGo) initPushHandlers(navigationRef);
                   }}
                 >
                   <StatusBar style="dark" />

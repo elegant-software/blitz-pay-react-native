@@ -1,102 +1,99 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
-  View,
-  Text,
-  TouchableOpacity,
+  ActivityIndicator,
+  FlatList,
   StyleSheet,
-  Animated,
+  Text,
+  View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLanguage } from '../lib/LanguageContext';
-import { colors, spacing, radius, shadow } from '../lib/theme';
+import { colors, spacing, radius } from '../lib/theme';
+import { useVoiceAssistantContext, type ConversationEntry } from '../lib/VoiceAssistantContext';
 
 export default function AssistantScreen() {
   const { t } = useLanguage();
   const insets = useSafeAreaInsets();
-  const [muted, setMuted] = useState(false);
-  const [listening, setListening] = useState(false);
+  const { micState, conversation } = useVoiceAssistantContext();
 
-  const toggleListening = () => {
-    if (!muted) {
-      setListening(!listening);
+  const listRef = useRef<FlatList>(null);
+  const isRecording = micState === 'recording';
+  const isProcessing = micState === 'processing';
+
+  // Scroll to bottom when new message arrives
+  useEffect(() => {
+    if (conversation.length > 0) {
+      setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
     }
+  }, [conversation.length]);
+
+  const renderMessage = ({ item }: { item: ConversationEntry }) => {
+    const aiText = item.response ?? item.question;
+    return (
+      <View style={styles.messageRow}>
+        {/* User bubble — right aligned */}
+        <View style={styles.userBubble}>
+          <Ionicons name="mic" size={13} color={colors.primary} style={styles.userBubbleIcon} />
+          <Text style={styles.userBubbleText}>{item.question}</Text>
+        </View>
+
+        {/* AI bubble — always shown */}
+        <View style={styles.aiBubble}>
+          <View style={styles.aiHeader}>
+            <View style={styles.aiIconBox}>
+              <Ionicons name="flash" size={12} color={colors.primary} />
+            </View>
+            <Text style={styles.aiLabel}>Blitz AI</Text>
+            <Text style={styles.timestamp}>
+              {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </Text>
+          </View>
+          <Text style={styles.aiText}>{aiText}</Text>
+        </View>
+      </View>
+    );
   };
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <LinearGradient colors={['#000000', '#0A0A1E']} style={styles.gradient}>
+
         {/* Header */}
         <View style={styles.header}>
           <Text style={styles.headerTitle}>{t('assistant')}</Text>
-          <TouchableOpacity
-            onPress={() => setMuted(!muted)}
-            style={[styles.muteBtn, muted && styles.muteBtnActive]}
-          >
-            <Ionicons
-              name={muted ? 'mic-off-outline' : 'mic-outline'}
-              size={20}
-              color={muted ? colors.error : colors.white}
-            />
-          </TouchableOpacity>
-        </View>
-
-        {/* Avatar */}
-        <View style={styles.avatarSection}>
-          <TouchableOpacity onPress={toggleListening} style={styles.avatarWrapper} activeOpacity={0.9}>
-            <View style={[styles.outerRing, listening && styles.outerRingActive]}>
-              <View style={[styles.innerRing, listening && styles.innerRingActive]}>
-                <LinearGradient
-                  colors={[colors.primary, colors.secondary]}
-                  style={styles.avatarCore}
-                >
-                  <Ionicons name="flash" size={32} color={colors.white} />
-                </LinearGradient>
-              </View>
+          {isRecording && (
+            <View style={styles.listeningBadge}>
+              <View style={styles.listeningDot} />
+              <Text style={styles.listeningLabel}>{t('voice_listening')}</Text>
             </View>
-            <Text style={styles.avatarLabel}>
-              {muted ? 'Muted' : listening ? t('live_transcription') : 'Tap to speak'}
-            </Text>
-          </TouchableOpacity>
-
-          {listening && !muted && (
-            <View style={styles.listeningIndicator}>
-              {[1, 2, 3, 4, 5].map((bar) => (
-                <View key={bar} style={[styles.bar, { height: 8 + bar * 6 }]} />
-              ))}
-            </View>
+          )}
+          {isProcessing && (
+            <ActivityIndicator size="small" color={colors.primary} />
           )}
         </View>
 
-        {/* AI Response card */}
-        <View style={styles.responseCard}>
-          <View style={styles.responseHeader}>
-            <View style={styles.aiIconBox}>
-              <Ionicons name="flash" size={14} color={colors.primary} />
+        {/* Conversation list */}
+        {conversation.length === 0 ? (
+          <View style={styles.emptyState}>
+            <View style={styles.emptyIcon}>
+              <Ionicons name="mic-outline" size={36} color={`${colors.primary}80`} />
             </View>
-            <Text style={styles.aiLabel}>Blitz AI</Text>
-            <View style={styles.activeDot} />
+            <Text style={styles.emptyTitle}>{t('voice_empty_title')}</Text>
+            <Text style={styles.emptySubtitle}>{t('voice_empty_subtitle')}</Text>
           </View>
-          <Text style={styles.responseText}>{t('ai_assistant_msg')}</Text>
-          <View style={styles.responseActions}>
-            <TouchableOpacity style={styles.responseActionBtn}>
-              <Text style={styles.responseActionText}>{t('compare')}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.responseActionBtn, styles.responseActionBtnPrimary]}>
-              <Text style={[styles.responseActionText, styles.responseActionTextPrimary]}>{t('buy_now')}</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+        ) : (
+          <FlatList
+            ref={listRef}
+            data={conversation}
+            keyExtractor={(item) => item.id}
+            renderItem={renderMessage}
+            contentContainerStyle={styles.listContent}
+            showsVerticalScrollIndicator={false}
+          />
+        )}
 
-        {/* Quick suggestions */}
-        <View style={styles.suggestions}>
-          {['Check price', 'Find nearby', 'Pay invoice', 'My balance'].map((suggestion) => (
-            <TouchableOpacity key={suggestion} style={styles.suggestionChip} activeOpacity={0.8}>
-              <Text style={styles.suggestionText}>{suggestion}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
       </LinearGradient>
     </View>
   );
@@ -107,143 +104,99 @@ const styles = StyleSheet.create({
   gradient: { flex: 1 },
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
   },
   headerTitle: { fontSize: 20, fontWeight: '800', color: colors.white },
-  muteBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    justifyContent: 'center',
+  listeningBadge: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 6,
+    backgroundColor: `${colors.primary}20`,
+    borderRadius: radius.full,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
   },
-  muteBtnActive: { backgroundColor: `${colors.error}20` },
-  avatarSection: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: spacing.xl,
+  listeningDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: colors.primary,
   },
-  avatarWrapper: { alignItems: 'center' },
-  outerRing: {
-    width: 160,
-    height: 160,
-    borderRadius: 80,
+  listeningLabel: { fontSize: 12, color: colors.primary, fontWeight: '600' },
+  listContent: {
+    padding: spacing.md,
+    paddingBottom: spacing.xl,
+    gap: spacing.lg,
+  },
+  messageRow: { gap: spacing.sm },
+  userBubble: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    alignSelf: 'flex-end',
+    maxWidth: '80%',
+    backgroundColor: `${colors.primary}25`,
+    borderRadius: radius.xl,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  outerRingActive: {
     borderColor: `${colors.primary}40`,
   },
-  innerRing: {
-    width: 130,
-    height: 130,
-    borderRadius: 65,
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.12)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  innerRingActive: {
-    borderColor: `${colors.primary}60`,
-  },
-  avatarCore: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  avatarLabel: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.5)',
-    marginTop: 16,
-    letterSpacing: 0.5,
-  },
-  listeningIndicator: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 3,
-    marginTop: spacing.md,
-    height: 40,
-  },
-  bar: {
-    width: 4,
-    borderRadius: 2,
-    backgroundColor: colors.primary,
-    opacity: 0.8,
-  },
-  responseCard: {
-    margin: spacing.md,
-    padding: spacing.md,
+  userBubbleIcon: { marginTop: 2 },
+  userBubbleText: { fontSize: 14, color: colors.white, fontWeight: '500', flexShrink: 1, lineHeight: 20 },
+  aiBubble: {
     backgroundColor: 'rgba(255,255,255,0.06)',
     borderRadius: radius.xl,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
+    padding: spacing.md,
   },
-  responseHeader: {
+  aiHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginBottom: spacing.sm,
+    marginBottom: 6,
   },
   aiIconBox: {
-    width: 22,
-    height: 22,
+    width: 20,
+    height: 20,
     borderRadius: 6,
     backgroundColor: `${colors.primary}20`,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  aiLabel: { fontSize: 13, fontWeight: '700', color: colors.primary },
-  activeDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-    backgroundColor: colors.success,
+  aiLabel: { fontSize: 12, fontWeight: '700', color: colors.primary, flex: 1 },
+  timestamp: { fontSize: 11, color: 'rgba(255,255,255,0.3)' },
+  aiText: { fontSize: 14, color: 'rgba(255,255,255,0.88)', lineHeight: 21 },
+  emptyState: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: spacing.xl,
+    gap: spacing.sm,
   },
-  responseText: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.85)',
-    lineHeight: 20,
+  emptyIcon: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: `${colors.primary}12`,
+    justifyContent: 'center',
+    alignItems: 'center',
     marginBottom: spacing.sm,
   },
-  responseActions: { flexDirection: 'row', gap: 8 },
-  responseActionBtn: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
-    borderRadius: radius.full,
-    paddingVertical: 8,
-    alignItems: 'center',
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.white,
+    textAlign: 'center',
   },
-  responseActionBtnPrimary: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
+  emptySubtitle: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.4)',
+    textAlign: 'center',
+    lineHeight: 20,
   },
-  responseActionText: { fontSize: 13, fontWeight: '600', color: 'rgba(255,255,255,0.8)' },
-  responseActionTextPrimary: { color: colors.black },
-  suggestions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.md + 80,
-    justifyContent: 'center',
-  },
-  suggestionChip: {
-    backgroundColor: 'rgba(255,255,255,0.07)',
-    borderRadius: radius.full,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-  },
-  suggestionText: { fontSize: 13, color: 'rgba(255,255,255,0.7)' },
 });
