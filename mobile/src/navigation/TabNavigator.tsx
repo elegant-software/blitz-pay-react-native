@@ -3,11 +3,11 @@ import { View, Platform, StyleSheet } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
 import { colors } from '../lib/theme';
 import { useLanguage } from '../lib/LanguageContext';
-import type { TabParamList, RootStackNav } from '../types';
+import type { TabParamList } from '../types';
 import FloatingAvatar from '../components/FloatingAvatar';
+import { VoiceAssistantProvider } from '../lib/VoiceAssistantContext';
 
 import ExploreScreen from '../screens/ExploreScreen';
 import AssistantScreen from '../screens/AssistantScreen';
@@ -28,7 +28,6 @@ const tabIcons: Record<keyof TabParamList, { active: IoniconName; inactive: Ioni
 function TabsWithFloatingAvatar() {
   const { t } = useLanguage();
   const insets = useSafeAreaInsets();
-  const navigation = useNavigation<RootStackNav>();
 
   const tabLabels: Record<keyof TabParamList, string> = {
     Explore: t('explore'),
@@ -63,14 +62,17 @@ function TabsWithFloatingAvatar() {
         <Tab.Screen name="Account" component={AccountScreen} options={{ title: tabLabels.Account }} />
       </Tab.Navigator>
 
-      {/* Floating AI avatar — sits above all tabs */}
-      <FloatingAvatar onPress={() => navigation.navigate('Main')} />
+      <FloatingAvatar />
     </View>
   );
 }
 
 export default function TabNavigator() {
-  return <TabsWithFloatingAvatar />;
+  return (
+    <VoiceAssistantProvider>
+      <TabsWithFloatingAvatar />
+    </VoiceAssistantProvider>
+  );
 }
 
 const styles = StyleSheet.create({

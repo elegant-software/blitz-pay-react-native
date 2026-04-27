@@ -1,5 +1,6 @@
 import * as Notifications from 'expo-notifications';
 import type { NavigationContainerRefWithCurrent } from '@react-navigation/native';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { observability } from '../observability';
 import { paymentResultTracker } from '../payments/paymentResultTracker';
 import { fetchPaymentStatus } from '../payments/paymentStatusClient';
@@ -14,16 +15,20 @@ interface ParsedPush {
   terminal: PaymentResultPushData | null;
 }
 
+const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
+
 // Foreground presentation: show banner + play sound so payment results are visible
 // even while the app is open (the default RN behavior is to suppress them).
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
-});
+if (!isExpoGo) {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowBanner: true,
+      shouldShowList: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+    }),
+  });
+}
 
 function parsePush(data: unknown): ParsedPush | null {
   if (!data || typeof data !== 'object') return null;
