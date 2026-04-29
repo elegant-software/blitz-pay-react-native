@@ -2,6 +2,10 @@
 
 Binding rules for anyone (human or agent) changing this codebase. Supersedes ad-hoc preferences. Amendments require a PR that updates this file and `AGENTS.md` together.
 
+## References
+
+- [`docs/references/business-guidelines.md`](docs/references/business-guidelines.md) — merchant business rules for geolocation-driven discovery, branch-first naming, logo usage, and merchant observability expectations.
+
 ## Core Principles
 
 ### I. Observability is Non-Negotiable on Money Paths
