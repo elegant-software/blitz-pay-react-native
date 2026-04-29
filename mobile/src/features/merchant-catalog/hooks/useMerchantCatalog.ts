@@ -4,6 +4,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import {
   fetchActiveProducts,
   fetchMerchantBranches,
+  fetchMerchantLogoUrl,
   resolveMerchantBranch,
 } from '../services/merchantCatalogService';
 import type { ActiveProduct, MerchantBranch } from '../types/catalog';
@@ -13,6 +14,7 @@ type MerchantCatalogState = {
   loading: boolean;
   errorKey: string | null;
   branch: MerchantBranch | null;
+  merchantLogoUrl?: string;
   products: ActiveProduct[];
 };
 
@@ -25,6 +27,7 @@ export function useMerchantCatalog(params: {
     loading: true,
     errorKey: null,
     branch: null,
+    merchantLogoUrl: undefined,
     products: [],
   });
 
@@ -34,6 +37,7 @@ export function useMerchantCatalog(params: {
         loading: false,
         errorKey: 'merchant_unavailable',
         branch: null,
+        merchantLogoUrl: undefined,
         products: [],
       });
       return;
@@ -41,7 +45,10 @@ export function useMerchantCatalog(params: {
 
     setState((current) => ({ ...current, loading: true, errorKey: null }));
     try {
-      const branches = await fetchMerchantBranches(merchantId);
+      const [branches, merchantLogoUrl] = await Promise.all([
+        fetchMerchantBranches(merchantId),
+        fetchMerchantLogoUrl(merchantId),
+      ]);
       let coords: { latitude: number; longitude: number } | undefined;
       try {
         const lastKnown = await Location.getLastKnownPositionAsync({});
@@ -61,6 +68,7 @@ export function useMerchantCatalog(params: {
           loading: false,
           errorKey: 'merchant_branch_unavailable',
           branch: null,
+          merchantLogoUrl,
           products: [],
         });
         return;
@@ -77,6 +85,7 @@ export function useMerchantCatalog(params: {
         loading: false,
         errorKey: null,
         branch,
+        merchantLogoUrl,
         products,
       });
     } catch {
@@ -84,6 +93,7 @@ export function useMerchantCatalog(params: {
         loading: false,
         errorKey: 'merchant_catalog_load_failed',
         branch: null,
+        merchantLogoUrl: undefined,
         products: [],
       });
     }
@@ -97,6 +107,7 @@ export function useMerchantCatalog(params: {
     loading: state.loading,
     errorKey: state.errorKey,
     branch: state.branch,
+    merchantLogoUrl: state.merchantLogoUrl,
     products: state.products,
     retry: loadCatalog,
   };

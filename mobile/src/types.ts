@@ -9,6 +9,7 @@ export type RootStackParamList = {
   Merchant: {
     merchantId?: string;
     merchantName?: string;
+    merchantLogoUrl?: string;
     distanceMeters?: number;
   };
   Checkout: {
@@ -17,6 +18,7 @@ export type RootStackParamList = {
     merchantId?: string;
     branchId?: string;
     branchName?: string;
+    merchantLogoUrl?: string;
     basketSummary?: string;
     basketItemCount?: number;
     basketItems?: BasketCheckoutItemSummary[];
@@ -32,6 +34,8 @@ export type RootStackParamList = {
     amount?: number;
     currency?: string;
     merchantName?: string;
+    branchName?: string;
+    merchantLogoUrl?: string;
     invoiceId?: string;
   };
   PaymentResult: {
@@ -40,6 +44,8 @@ export type RootStackParamList = {
     amount?: number;
     currency?: string;
     merchantName?: string;
+    branchName?: string;
+    merchantLogoUrl?: string;
     reason?: string;
   };
   PaymentPending: {
@@ -47,6 +53,8 @@ export type RootStackParamList = {
     amount?: number;
     currency?: string;
     merchantName?: string;
+    branchName?: string;
+    merchantLogoUrl?: string;
     basketSummary?: string;
   };
   InvoicePdfPreview: {
@@ -63,6 +71,9 @@ export type RootStackParamList = {
     merchantName: string;
     branchId: string;
     branchName: string;
+    merchantLogoUrl?: string;
+    categoryName?: string;
+    productCode?: number;
   };
 };
 

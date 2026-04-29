@@ -15,12 +15,16 @@ export interface MerchantBranch {
 
 export interface ActiveProduct {
   productId: string;
+  merchantId: string;
   branchId: string;
   name: string;
   description?: string;
   unitPrice: number;
   imageUrl?: string;
   active: boolean;
+  categoryId?: string;
+  categoryName?: string;
+  productCode?: number;
   updatedAt?: string;
 }
 

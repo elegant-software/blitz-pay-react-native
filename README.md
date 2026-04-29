@@ -31,6 +31,20 @@ View the web experience in AI Studio: https://ai.studio/apps/97422928-d654-4fcd-
    - `npm run android`
    - `npm run ios`
 
+### Clean rebuild (mobile)
+
+If Metro or Expo appears to ignore recent UI changes, clear the local caches and restart from the `mobile/` directory:
+
+- `rm -rf .expo node_modules/.cache`
+- `npx expo start --clear`
+
+If you are using a native dev build, rebuild the app as well:
+
+- `npx expo run:ios`
+- `npx expo run:android`
+
+Note: category names and product codes only render when the backend product payload includes `categoryName` and `productCode`. If those fields are `null`, no category or code will appear in the product list.
+
 ### EAS build prerequisites
 
 Before running the GitHub Actions EAS jobs (`eas-build`, `eas-update`), make sure `mobile/eas.json` exists.

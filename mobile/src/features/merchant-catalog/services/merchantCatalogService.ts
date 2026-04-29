@@ -18,6 +18,10 @@ type BranchResponse = {
   imageUrl?: string;
 };
 
+type MerchantDetailsResponse = {
+  logoUrl?: string;
+};
+
 type ProductResponse = {
   productId?: string;
   branchId?: string;
@@ -26,6 +30,12 @@ type ProductResponse = {
   unitPrice?: number;
   imageUrl?: string;
   active?: boolean;
+  categoryId?: string;
+  categoryName?: string;
+  category?: string | { id?: string; name?: string };
+  productCategoryName?: string;
+  productCategory?: { id?: string; name?: string };
+  productCode?: number;
   updatedAt?: string;
 };
 
@@ -56,6 +66,23 @@ function buildAddressSummary(branch: BranchResponse): string | undefined {
     .join(', ') || undefined;
 }
 
+function resolveCategory(product: ProductResponse): { categoryId?: string; categoryName?: string } {
+  const nestedCategory =
+    typeof product.category === 'object' && product.category
+      ? product.category
+      : product.productCategory;
+
+  const categoryName =
+    product.categoryName
+    ?? product.productCategoryName
+    ?? (typeof product.category === 'string' ? product.category : undefined)
+    ?? nestedCategory?.name;
+
+  const categoryId = product.categoryId ?? nestedCategory?.id;
+
+  return { categoryId, categoryName };
+}
+
 export async function fetchMerchantBranches(merchantId: string): Promise<MerchantBranch[]> {
   const response = await fetchMerchantCommerceJson<BranchResponse[]>(`/merchants/${merchantId}/branches`);
   return response
@@ -71,6 +98,15 @@ export async function fetchMerchantBranches(merchantId: string): Promise<Merchan
       activePaymentChannels: (branch.activePaymentChannels ?? []) as MerchantBranch['activePaymentChannels'],
       imageUrl: branch.imageUrl,
     }));
+}
+
+export async function fetchMerchantLogoUrl(merchantId: string): Promise<string | undefined> {
+  try {
+    const details = await fetchMerchantCommerceJson<MerchantDetailsResponse>(`/merchants/${merchantId}`);
+    return details.logoUrl ?? undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export function resolveMerchantBranch(
@@ -112,18 +148,26 @@ export async function fetchActiveProducts(
   const response = await fetchMerchantCommerceJson<ProductResponse[]>(
     `/merchants/${merchantId}/products?${search.toString()}`,
   );
+  console.log('[catalog] raw products sample:', JSON.stringify(response.slice(0, 2), null, 2));
   return response
     .filter((product) => product.productId && product.branchId && product.name && typeof product.unitPrice === 'number')
-    .map((product) => ({
-      productId: product.productId!,
-      branchId: product.branchId!,
-      name: product.name!,
-      description: product.description,
-      unitPrice: product.unitPrice!,
-      imageUrl: product.imageUrl,
-      active: Boolean(product.active),
-      updatedAt: product.updatedAt,
-    }))
+    .map((product) => {
+      const { categoryId, categoryName } = resolveCategory(product);
+      return {
+        productId: product.productId!,
+        merchantId,
+        branchId: product.branchId!,
+        name: product.name!,
+        description: product.description,
+        unitPrice: product.unitPrice!,
+        imageUrl: product.imageUrl,
+        active: Boolean(product.active),
+        categoryId,
+        categoryName,
+        productCode: product.productCode,
+        updatedAt: product.updatedAt,
+      };
+    })
     .filter((product) => product.active)
     .sort((a, b) => a.name.localeCompare(b.name));
 }

@@ -1,6 +1,8 @@
 export interface NearbyMerchant {
   merchantId: string;
+  merchantName: string;
   displayName: string;
+  branchId?: string;
   latitude: number;
   longitude: number;
   distanceMeters: number;

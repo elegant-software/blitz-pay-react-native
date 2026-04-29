@@ -156,7 +156,8 @@ export default function ExploreScreen() {
             onPress={() =>
               navigation.navigate('Merchant', {
                 merchantId: merchant.merchantId,
-                merchantName: merchant.displayName,
+                merchantName: merchant.merchantName,
+                merchantLogoUrl: merchant.logoUrl,
                 distanceMeters: merchant.distanceMeters,
               })
             }
@@ -174,7 +175,7 @@ export default function ExploreScreen() {
                 <Text style={styles.merchantName}>{merchant.displayName}</Text>
                 <Ionicons name="checkmark-circle" size={14} color={colors.primary} />
               </View>
-              <Text style={styles.merchantCategory}>{t('nearby_merchant_live')}</Text>
+              <Text style={styles.merchantCategory}>{merchant.merchantName}</Text>
               <View style={styles.merchantMeta}>
                 <Ionicons name="navigate-outline" size={12} color={colors.gray600} />
                 <Text style={styles.merchantDistance}>{merchant.distanceLabel}</Text>

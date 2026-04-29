@@ -69,6 +69,8 @@ export function useBasket() {
       itemSummary: basket.items.map((item) => `${item.quantity}× ${item.productName}`).join(', '),
       basketItems: basket.items.map((item) => ({
         productId: item.productId,
+        merchantId: item.merchantId,
+        branchId: item.branchId,
         productName: item.productName,
         quantity: item.quantity,
         unitPrice: item.unitPrice,

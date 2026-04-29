@@ -34,9 +34,11 @@ export default function ProductDetailScreen() {
     merchantName,
     branchId,
     branchName,
+    categoryName,
+    productCode,
   } = route.params;
 
-  const product = { productId, name, description, unitPrice, imageUrl, branchId, active: true };
+  const product = { productId, merchantId, name, description, unitPrice, imageUrl, branchId, active: true };
   const { quantityByProductId, setProductQuantity } = useBasket();
   const quantity = quantityByProductId[productId] ?? 0;
 
@@ -79,6 +81,23 @@ export default function ProductDetailScreen() {
         <View style={styles.body}>
           <Text style={styles.productName}>{name}</Text>
           <Text style={styles.productPrice}>€{unitPrice.toFixed(2)}</Text>
+
+          {(categoryName || productCode != null) ? (
+            <View style={styles.metaRow}>
+              {categoryName ? (
+                <View style={styles.metaBadge}>
+                  <Text style={styles.metaBadgeLabel}>{t('product_category')}</Text>
+                  <Text style={styles.metaBadgeValue}>{categoryName}</Text>
+                </View>
+              ) : null}
+              {productCode != null ? (
+                <View style={styles.metaBadge}>
+                  <Text style={styles.metaBadgeLabel}>{t('product_code')}</Text>
+                  <Text style={styles.metaBadgeValue}>#{productCode}</Text>
+                </View>
+              ) : null}
+            </View>
+          ) : null}
 
           {description ? (
             <View style={styles.descriptionCard}>
@@ -163,6 +182,31 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '700',
     color: colors.primary,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  metaBadge: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    ...shadow.sm,
+  },
+  metaBadgeLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: colors.gray600,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  metaBadgeValue: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.onSurface,
   },
   descriptionCard: {
     backgroundColor: colors.surface,

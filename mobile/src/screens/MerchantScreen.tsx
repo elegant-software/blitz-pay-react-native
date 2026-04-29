@@ -19,6 +19,96 @@ import { resolveImageUri } from '../lib/imageUri';
 import { observability } from '../lib/observability';
 import { colors, spacing, radius, shadow } from '../lib/theme';
 import type { RootStackNav, RootStackParamList } from '../types';
+import type { ActiveProduct, MerchantBranch } from '../features/merchant-catalog/types/catalog';
+
+type ProductRowProps = {
+  product: ActiveProduct;
+  quantity: number;
+  token: string | null;
+  merchantId: string | undefined;
+  merchantName: string;
+  branch: MerchantBranch | null;
+  onPress: () => void;
+  onDecrement: () => void;
+  onIncrement: () => void;
+};
+
+function ProductRow({ product, quantity, token, merchantId, branch, onPress, onDecrement, onIncrement }: ProductRowProps) {
+  const productImage = resolveImageUri(product.imageUrl);
+  const imageMeta = summarizeImageUri(productImage?.uri);
+  return (
+    <TouchableOpacity style={styles.productRow} activeOpacity={0.75} onPress={onPress}>
+      {productImage ? (
+        <Image
+          source={{
+            uri: productImage.uri,
+            headers: productImage.needsAuth && token ? { Authorization: `Bearer ${token}` } : undefined,
+          }}
+          style={styles.productImage}
+          resizeMode="cover"
+          onLoadStart={() => {
+            observability.info('merchant_product_image_load_started', {
+              merchantId: merchantId ?? null,
+              branchId: branch?.branchId ?? null,
+              productId: product.productId,
+              imageHost: imageMeta.host,
+              imagePath: imageMeta.path,
+            });
+          }}
+          onLoad={() => {
+            observability.info('merchant_product_image_loaded', {
+              merchantId: merchantId ?? null,
+              branchId: branch?.branchId ?? null,
+              productId: product.productId,
+              imageHost: imageMeta.host,
+              imagePath: imageMeta.path,
+            });
+          }}
+          onError={(event) => {
+            observability.warn('merchant_product_image_failed', {
+              merchantId: merchantId ?? null,
+              branchId: branch?.branchId ?? null,
+              productId: product.productId,
+              imageHost: imageMeta.host,
+              imagePath: imageMeta.path,
+              reason: event.nativeEvent.error ?? 'unknown_image_error',
+            });
+          }}
+        />
+      ) : (
+        <View style={styles.productIcon}>
+          <Ionicons name="cube-outline" size={20} color={colors.gray600} />
+        </View>
+      )}
+      <View style={styles.productInfo}>
+        <Text style={styles.productName}>{product.name}</Text>
+        {(product.categoryName || product.productCode != null) ? (
+          <View style={styles.productTags}>
+            {product.categoryName ? (
+              <Text style={styles.productCategory}>{product.categoryName}</Text>
+            ) : null}
+            {product.productCode != null ? (
+              <Text style={styles.productCodeBadge}>#{product.productCode}</Text>
+            ) : null}
+          </View>
+        ) : null}
+        {product.description ? <Text style={styles.productDesc}>{product.description}</Text> : null}
+        <View style={styles.productMeta}>
+          <Text style={styles.productPrice}>€{product.unitPrice.toFixed(2)}</Text>
+        </View>
+      </View>
+      <View style={styles.quantityBox}>
+        <TouchableOpacity style={styles.quantityButton} onPress={onDecrement}>
+          <Ionicons name="remove" size={18} color={colors.onSurface} />
+        </TouchableOpacity>
+        <Text style={styles.quantityValue}>{quantity}</Text>
+        <TouchableOpacity style={styles.quantityButton} onPress={onIncrement}>
+          <Ionicons name="add" size={18} color={colors.onSurface} />
+        </TouchableOpacity>
+      </View>
+    </TouchableOpacity>
+  );
+}
 
 function summarizeImageUri(uri?: string): { host: string | null; path: string | null } {
   if (!uri) return { host: null, path: null };
@@ -44,10 +134,30 @@ export default function MerchantScreen() {
   const insets = useSafeAreaInsets();
   const merchantName = route.params?.merchantName ?? 'Merchant';
   const merchantId = route.params?.merchantId;
+  const initialMerchantLogoUrl = route.params?.merchantLogoUrl;
   const merchantDistance = route.params?.distanceMeters;
-  const { loading, errorKey, branch, products, retry } = useMerchantCatalog({ merchantId, merchantName });
+  const { loading, errorKey, branch, merchantLogoUrl, products, retry } = useMerchantCatalog({ merchantId, merchantName });
   const { itemCount, subtotal, quantityByProductId, setMerchantContext, setProductQuantity, buildCheckoutContext } = useBasket();
   const [basketError, setBasketError] = useState<string | null>(null);
+  const visibleBranchName = branch?.name ?? merchantName;
+  const visibleLogoUrl = branch?.imageUrl ?? merchantLogoUrl ?? initialMerchantLogoUrl;
+
+  // Group products: categorized first (sorted alphabetically), uncategorized at the end
+  const categoryGroups: { name: string; items: typeof products }[] = [];
+  const uncategorizedProducts: typeof products = [];
+  {
+    const grouped: Record<string, typeof products> = {};
+    for (const p of products) {
+      if (p.categoryName) {
+        (grouped[p.categoryName] ??= []).push(p);
+      } else {
+        uncategorizedProducts.push(p);
+      }
+    }
+    for (const name of Object.keys(grouped).sort((a, b) => a.localeCompare(b))) {
+      categoryGroups.push({ name, items: grouped[name] });
+    }
+  }
 
   useEffect(() => {
     if (merchantId && branch) {
@@ -70,6 +180,7 @@ export default function MerchantScreen() {
         merchantId: checkoutContext.merchantId,
         branchId: checkoutContext.branchId,
         branchName: checkoutContext.branchName,
+        merchantLogoUrl: visibleLogoUrl,
         basketSummary: checkoutContext.itemSummary,
         basketItemCount: checkoutContext.itemCount,
         basketItems: checkoutContext.basketItems,
@@ -85,7 +196,7 @@ export default function MerchantScreen() {
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} hitSlop={12}>
           <Ionicons name="chevron-back" size={24} color={colors.onSurface} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle} numberOfLines={1}>{merchantName}</Text>
+        <Text style={styles.headerTitle} numberOfLines={1}>{visibleBranchName}</Text>
         <TouchableOpacity style={styles.shareBtn} hitSlop={12}>
           <Ionicons name="share-outline" size={22} color={colors.onSurface} />
         </TouchableOpacity>
@@ -93,11 +204,15 @@ export default function MerchantScreen() {
 
       <ScrollView contentContainerStyle={{ paddingBottom: 100 + insets.bottom }} showsVerticalScrollIndicator={false}>
         <View style={styles.banner}>
-          <View style={styles.bannerIcon}>
-            <Ionicons name="storefront" size={40} color={colors.secondary} />
-          </View>
+          {visibleLogoUrl ? (
+            <Image source={{ uri: visibleLogoUrl }} style={styles.bannerLogo} resizeMode="contain" />
+          ) : (
+            <View style={styles.bannerIcon}>
+              <Ionicons name="storefront" size={40} color={colors.secondary} />
+            </View>
+          )}
           <View style={styles.bannerInfo}>
-            <Text style={styles.bannerName}>{merchantName}</Text>
+            <Text style={styles.bannerName}>{visibleBranchName}</Text>
             <View style={styles.verifiedRow}>
               <Ionicons name="checkmark-circle" size={14} color={colors.primary} />
               <Text style={styles.verifiedText}>{t('blitz_verified')}</Text>
@@ -105,7 +220,7 @@ export default function MerchantScreen() {
             <View style={styles.ratingRow}>
               <Ionicons name="navigate-outline" size={13} color={colors.gray600} />
               <Text style={styles.ratingText}>
-                {branch?.name ?? t('merchant_branch_unavailable')}
+                {merchantName}
                 {merchantDistance != null
                   ? ` · ${merchantDistance < 1000 ? `${Math.round(merchantDistance)} m` : `${(merchantDistance / 1000).toFixed(1)} km`}`
                   : ''}
@@ -137,111 +252,103 @@ export default function MerchantScreen() {
         ) : (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{t('more_from_merchant')}</Text>
-            {products.map((product) => {
-              const quantity = quantityByProductId[product.productId] ?? 0;
-              const productImage = resolveImageUri(product.imageUrl);
-              const imageMeta = summarizeImageUri(productImage?.uri);
-              return (
-                <TouchableOpacity
-                  key={product.productId}
-                  style={styles.productRow}
-                  activeOpacity={0.75}
-                  onPress={() => {
-                    if (!merchantId || !branch) return;
-                    navigation.navigate('ProductDetail', {
-                      productId: product.productId,
-                      name: product.name,
-                      description: product.description,
-                      unitPrice: product.unitPrice,
-                      imageUrl: product.imageUrl,
-                      merchantId,
-                      merchantName,
-                      branchId: branch.branchId,
-                      branchName: branch.name,
-                    });
-                  }}
-                >
-                  {productImage ? (
-                    <Image
-                      source={{
-                        uri: productImage.uri,
-                        headers: productImage.needsAuth && token ? { Authorization: `Bearer ${token}` } : undefined,
-                      }}
-                      style={styles.productImage}
-                      resizeMode="cover"
-                      onLoadStart={() => {
-                        observability.info('merchant_product_image_load_started', {
-                          merchantId: merchantId ?? null,
-                          branchId: branch?.branchId ?? null,
-                          productId: product.productId,
-                          imageHost: imageMeta.host,
-                          imagePath: imageMeta.path,
-                        });
-                      }}
-                      onLoad={() => {
-                        observability.info('merchant_product_image_loaded', {
-                          merchantId: merchantId ?? null,
-                          branchId: branch?.branchId ?? null,
-                          productId: product.productId,
-                          imageHost: imageMeta.host,
-                          imagePath: imageMeta.path,
-                        });
-                      }}
-                      onError={(event) => {
-                        observability.warn('merchant_product_image_failed', {
-                          merchantId: merchantId ?? null,
-                          branchId: branch?.branchId ?? null,
-                          productId: product.productId,
-                          imageHost: imageMeta.host,
-                          imagePath: imageMeta.path,
-                          reason: event.nativeEvent.error ?? 'unknown_image_error',
-                        });
-                      }}
-                    />
-                  ) : (
-                    <View style={styles.productIcon}>
-                      <Ionicons name="cube-outline" size={20} color={colors.gray600} />
-                    </View>
-                  )}
-                  <View style={styles.productInfo}>
-                    <Text style={styles.productName}>{product.name}</Text>
-                    {product.description ? <Text style={styles.productDesc}>{product.description}</Text> : null}
-                    <Text style={styles.productPrice}>€{product.unitPrice.toFixed(2)}</Text>
-                  </View>
-                  <View style={styles.quantityBox}>
-                    <TouchableOpacity
-                      style={styles.quantityButton}
-                      onPress={() => {
-                        if (!merchantId || !branch) return;
-                        setProductQuantity({
-                          merchantId,
-                          merchantName,
-                          branchId: branch.branchId,
-                          branchName: branch.name,
-                        }, product, Math.max(0, quantity - 1));
-                      }}
-                    >
-                      <Ionicons name="remove" size={18} color={colors.onSurface} />
-                    </TouchableOpacity>
-                    <Text style={styles.quantityValue}>{quantity}</Text>
-                    <TouchableOpacity
-                      style={styles.quantityButton}
-                      onPress={() => {
-                        if (!merchantId || !branch) return;
-                        setProductQuantity({
-                          merchantId,
-                          merchantName,
-                          branchId: branch.branchId,
-                          branchName: branch.name,
-                        }, product, quantity + 1);
-                      }}
-                    >
-                      <Ionicons name="add" size={18} color={colors.onSurface} />
-                    </TouchableOpacity>
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
+
+            {categoryGroups.map(({ name, items }) => (
+              <View key={name}>
+                <View style={styles.categoryHeader}>
+                  <Text style={styles.categoryHeaderText}>{name}</Text>
+                </View>
+                {items.map((product) => (
+                  <ProductRow
+                    key={product.productId}
+                    product={product}
+                    quantity={quantityByProductId[product.productId] ?? 0}
+                    token={token}
+                    merchantId={merchantId}
+                    merchantName={merchantName}
+                    branch={branch}
+                    onPress={() => {
+                      if (!merchantId || !branch) return;
+                      navigation.navigate('ProductDetail', {
+                        productId: product.productId,
+                        name: product.name,
+                        description: product.description,
+                        unitPrice: product.unitPrice,
+                        imageUrl: product.imageUrl,
+                        merchantId,
+                        merchantName,
+                        branchId: branch.branchId,
+                        branchName: branch.name,
+                        merchantLogoUrl: visibleLogoUrl,
+                        categoryName: product.categoryName,
+                        productCode: product.productCode,
+                      });
+                    }}
+                    onDecrement={() => {
+                      if (!merchantId || !branch) return;
+                      setProductQuantity(
+                        { merchantId, merchantName, branchId: branch.branchId, branchName: branch.name },
+                        product,
+                        Math.max(0, (quantityByProductId[product.productId] ?? 0) - 1),
+                      );
+                    }}
+                    onIncrement={() => {
+                      if (!merchantId || !branch) return;
+                      setProductQuantity(
+                        { merchantId, merchantName, branchId: branch.branchId, branchName: branch.name },
+                        product,
+                        (quantityByProductId[product.productId] ?? 0) + 1,
+                      );
+                    }}
+                  />
+                ))}
+              </View>
+            ))}
+
+            {uncategorizedProducts.map((product) => (
+              <ProductRow
+                key={product.productId}
+                product={product}
+                quantity={quantityByProductId[product.productId] ?? 0}
+                token={token}
+                merchantId={merchantId}
+                merchantName={merchantName}
+                branch={branch}
+                onPress={() => {
+                  if (!merchantId || !branch) return;
+                  navigation.navigate('ProductDetail', {
+                    productId: product.productId,
+                    name: product.name,
+                    description: product.description,
+                    unitPrice: product.unitPrice,
+                    imageUrl: product.imageUrl,
+                    merchantId,
+                    merchantName,
+                    branchId: branch.branchId,
+                    branchName: branch.name,
+                    merchantLogoUrl: visibleLogoUrl,
+                    categoryName: product.categoryName,
+                    productCode: product.productCode,
+                  });
+                }}
+                onDecrement={() => {
+                  if (!merchantId || !branch) return;
+                  setProductQuantity(
+                    { merchantId, merchantName, branchId: branch.branchId, branchName: branch.name },
+                    product,
+                    Math.max(0, (quantityByProductId[product.productId] ?? 0) - 1),
+                  );
+                }}
+                onIncrement={() => {
+                  if (!merchantId || !branch) return;
+                  setProductQuantity(
+                    { merchantId, merchantName, branchId: branch.branchId, branchName: branch.name },
+                    product,
+                    (quantityByProductId[product.productId] ?? 0) + 1,
+                  );
+                }}
+              />
+            ))}
           </View>
         )}
 
@@ -305,6 +412,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: spacing.md,
   },
+  bannerLogo: {
+    width: 72,
+    height: 72,
+    borderRadius: radius.xl,
+    backgroundColor: colors.surface,
+    marginRight: spacing.md,
+  },
   bannerInfo: { flex: 1, justifyContent: 'center' },
   bannerName: { fontSize: 18, fontWeight: '700', color: colors.onSurface, marginBottom: 4 },
   verifiedRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 },
@@ -336,10 +450,51 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     backgroundColor: colors.surface,
   },
+  categoryHeader: {
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xs,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.gray200,
+    marginBottom: spacing.xs,
+  },
+  categoryHeaderText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.primary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
   productInfo: { flex: 1 },
   productName: { fontSize: 14, fontWeight: '600', color: colors.onSurface },
+  productTags: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    marginTop: 2,
+  },
+  productCategory: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  productCodeBadge: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.gray600,
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 2,
+    borderRadius: radius.sm,
+  },
   productDesc: { fontSize: 12, color: colors.gray600, marginTop: 1 },
-  productPrice: { fontSize: 15, fontWeight: '700', color: colors.onSurface, marginTop: 6 },
+  productMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: 6,
+  },
+  productPrice: { fontSize: 15, fontWeight: '700', color: colors.onSurface },
   quantityBox: {
     flexDirection: 'row',
     alignItems: 'center',

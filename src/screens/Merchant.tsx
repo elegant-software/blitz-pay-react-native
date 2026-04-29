@@ -88,6 +88,14 @@ export default function Merchant({ onBack, onPayNow }: MerchantProps) {
                 <span>{t('blitz_verified')}</span>
               </div>
             </div>
+            <div className="flex flex-wrap gap-2">
+              <span className="text-[11px] font-semibold text-primary/80 bg-primary/10 px-3 py-1 rounded-full border border-primary/20">
+                Starters & Cultures
+              </span>
+              <span className="text-[11px] font-semibold text-white/40 bg-white/5 px-3 py-1 rounded-full border border-white/10">
+                #3001
+              </span>
+            </div>
             <div className="flex gap-3">
               <button
                 onClick={onPayNow}
@@ -145,11 +153,15 @@ export default function Merchant({ onBack, onPayNow }: MerchantProps) {
             {
               name: 'Organic Rye Flour',
               price: '$12.00',
+              category: 'Dry Goods',
+              productCode: 1042,
               img: 'https://lh3.googleusercontent.com/aida-public/AB6AXuD-Hpf8382kW0i2wwdI_pm5eJM2chbWjmWOnBHn0AxK74aheFOMAEIzkgjDIVp7vUM5a23WwJWJitSXx9B5RryT5CdL6TcwW8lAedo8ViCadGKzZWf96ig4WLub3u00GA_afUU4fY0lz4ejy9TCEdXLjUQlnMFKGw56sltxi6KimWAj_iW0TAG6W8a6DeIioTomN5Ws2s3YdvJ90ocMSvJOQPP9tt2OITy7_-G3ArlnVa23Ncrx592v2SfrcEl0ZWEVBhhUz5uRi9Sp',
             },
             {
               name: 'Rattan Proofing Basket',
               price: '$28.00',
+              category: 'Bakeware',
+              productCode: 2017,
               img: 'https://lh3.googleusercontent.com/aida-public/AB6AXuClI2OLgCzNztBY33p4bH9zvbHm7v3WDgCDIuF-kgNEjCKjnFpozDdwGOvftf3XcwDmFGjUUaCrCXpjSJeEP3GKhnH7ROKYBZHO37V8xXaUnQcKqCIfaRCVV6pbWmWyVOXcgtT1rgm9k4c1p4uwSsl5CrnnlAG1_thyZm5KCzAZIGmR-ne3n8tr6shF4ZLeI6J0HBrupJyGjTluAsTMyT7cBfrbWUDGmtUWc2b9XC9WdX_WAo-zmO95hdIOB7PxRNhxfoA5CWWTwKC5',
             },
           ].map((item, i) => (
@@ -165,9 +177,17 @@ export default function Merchant({ onBack, onPayNow }: MerchantProps) {
               <span className="font-bold text-on-background block leading-tight mb-1">
                 {item.name}
               </span>
-              <span className="text-on-surface-variant text-sm font-medium">
+              <span className="text-on-surface-variant text-sm font-medium block mb-1">
                 {item.price}
               </span>
+              <div className="flex flex-wrap gap-1">
+                <span className="text-[10px] font-semibold text-primary/80 bg-primary/10 px-2 py-0.5 rounded-full border border-primary/20">
+                  {item.category}
+                </span>
+                <span className="text-[10px] font-semibold text-white/40 bg-white/5 px-2 py-0.5 rounded-full border border-white/10">
+                  #{item.productCode}
+                </span>
+              </div>
             </div>
           ))}
         </div>

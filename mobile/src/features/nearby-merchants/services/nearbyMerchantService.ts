@@ -13,6 +13,11 @@ type NearbyMerchantResponse = {
     distanceMeters?: number;
     geofenceRadiusMeters?: number;
     googlePlaceId?: string;
+    activeBranches?: Array<{
+      branchId?: string;
+      name?: string;
+      distanceMeters?: number;
+    }>;
   }>;
 };
 
@@ -39,9 +44,15 @@ function ensureNumber(value: unknown, fallback = 0): number {
 
 function mapNearbyMerchant(value: NearbyMerchantEntry): NearbyMerchant | null {
   if (!value?.merchantId || !value.legalBusinessName) return null;
+  const nearestBranch = (value.activeBranches ?? [])
+    .filter((branch) => branch?.branchId && branch.name)
+    .sort((a, b) => ensureNumber(a.distanceMeters, Number.POSITIVE_INFINITY) - ensureNumber(b.distanceMeters, Number.POSITIVE_INFINITY))[0];
+
   return {
     merchantId: value.merchantId,
-    displayName: value.legalBusinessName,
+    merchantName: value.legalBusinessName,
+    displayName: nearestBranch?.name ?? value.legalBusinessName,
+    branchId: nearestBranch?.branchId,
     latitude: ensureNumber(value.latitude),
     longitude: ensureNumber(value.longitude),
     distanceMeters: ensureNumber(value.distanceMeters),

@@ -22,6 +22,8 @@ export interface BasketState {
 
 export interface BasketCheckoutItemSummary {
   productId: string;
+  merchantId: string;
+  branchId: string;
   productName: string;
   quantity: number;
   unitPrice: number;
