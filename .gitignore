@@ -6,7 +6,8 @@ coverage/
 *.log
 .env*
 !.env.example
-/mobile/.expo/
+/blitz-pay/.expo/
+/blitz-pay-merchant/.expo/
 .expo/
 .idea/
 .vscode/

@@ -1,163 +1,167 @@
-<div align="center">
-  <img width="1200" height="475" alt="Explore screen" src="assets/explore.svg" />
-</div>
+# BlitzPay
 
-# BlitzPay (Web + React Native)
+BlitzPay is split into two React Native / Expo mobile apps that share the same design system, auth layer (Keycloak ROPC), and backend API.
 
-This repo houses both the AI Studio / Vite-powered web experience and the React Native (Expo) counterpart. The same Keycloak-backed auth layer is shared, with the web bundle consuming `VITE_` env vars and the mobile app using `EXPO_PUBLIC_` equivalents.
+| App | Directory | Who uses it |
+|-----|-----------|-------------|
+| **BlitzPay** | `blitz-pay/` | Consumers — QR payments, merchant discovery, voice assistant, wallet |
+| **BlitzPay Merchant** | `blitz-pay-merchant/` | Merchants — dashboard, orders, products, payments, QR generation |
 
-View the web experience in AI Studio: https://ai.studio/apps/97422928-d654-4fcd-82de-45e056b0428d
+---
 
-## Web (Vite + AI Studio)
-
-**Prerequisites:** Node.js
-
-1. Install dependencies in the repo root:
-   `npm install`
-2. Copy `.env.example` to `.env` and populate the Gemini, Keycloak, and app URL values described below.
-3. Start the Vite dev server:
-   `npm run dev`
-
-## React Native (Expo)
+## blitz-pay (Consumer App)
 
 **Prerequisites:** Node.js, npm, Android/iOS device or simulator
 
-1. Install the mobile dependencies:
-   `cd mobile && npm install`
-2. Copy `mobile/.env.example` to `mobile/.env` and match the Keycloak/API settings that the web app uses.
-3. Spin up Expo (Metro bundler):
-   `npm run start`
-4. Launch on a simulator or device:
-   - `npm run android`
-   - `npm run ios`
+```bash
+cd blitz-pay
+cp .env.example .env      # fill in Keycloak/API values
+npm install
+npm run ios               # iOS Simulator
+npm run android           # Android Emulator
+npm run start             # Expo Go / Dev Client
+```
 
-### Clean rebuild (mobile)
+### Auth bypass (demo / dev)
 
-If Metro or Expo appears to ignore recent UI changes, clear the local caches and restart from the `mobile/` directory:
+Set `EXPO_PUBLIC_AUTH_BYPASS=true` in `blitz-pay/.env` to skip Keycloak and auto-login as a dev user.
 
-- `rm -rf .expo node_modules/.cache`
-- `npx expo start --clear`
+### Environment variables
 
-If you are using a native dev build, rebuild the app as well:
+| Key | Description |
+|-----|-------------|
+| `EXPO_PUBLIC_KEYCLOAK_URL` | Keycloak server URL (e.g. `http://localhost:8080`) |
+| `EXPO_PUBLIC_KEYCLOAK_REALM` | Keycloak realm (e.g. `blitzpay`) |
+| `EXPO_PUBLIC_KEYCLOAK_CLIENT_ID` | Keycloak public client ID (e.g. `blitzpay-spa`) |
+| `EXPO_PUBLIC_AUTH_BYPASS` | `true` to skip Keycloak entirely |
+| `EXPO_PUBLIC_API_URL` | Backend API base URL |
+| `EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Stripe publishable key (`pk_…`) |
+| `EXPO_PUBLIC_OBSERVABILITY_ENABLED` | Enable mobile log forwarding to OTLP |
 
-- `npx expo run:ios`
-- `npx expo run:android`
+See `blitz-pay/.env.example` for the full list.
 
-Note: category names and product codes only render when the backend product payload includes `categoryName` and `productCode`. If those fields are `null`, no category or code will appear in the product list.
+### Screens
 
-### EAS build prerequisites
+Login, Signup, Explore, Assistant (voice), Vault, Account, Merchant, Checkout, MyQRCode, QRScanner, Invoices, SendInvoice, Notifications, PaymentProcessing, PaymentResult, PaymentPending, InvoicePdfPreview, ProductDetail
 
-Before running the GitHub Actions EAS jobs (`eas-build`, `eas-update`), make sure `mobile/eas.json` exists.
+### Stripe testing
 
-Generate it with:
-`cd mobile && npx eas build:configure`
+- Requires a native dev build (`npx expo run:ios` / `run:android`) — not compatible with standard Expo Go.
+- Test card success: `4242 4242 4242 4242`
+- Test card 3D Secure: `4000 0027 6000 3184`
 
-This creates the EAS project config file used by CI.
+---
 
-CI note for iOS: the `preview` profile is configured with `ios.simulator: true` in `mobile/eas.json`, so non-interactive GitHub Actions builds do not require signing credentials.
+## blitz-pay-merchant (Merchant Portal)
 
-If you need an installable iOS device build (internal distribution or production), run EAS credentials setup once in interactive mode (for example `cd mobile && npx eas credentials`) and then use a non-simulator profile.
+**Prerequisites:** Node.js, npm, Android/iOS device or simulator
 
-### Async EAS builds (recommended)
+```bash
+cd blitz-pay-merchant
+cp .env.example .env      # fill in Keycloak/API values
+npm install
+npm run ios
+npm run android
+npm run start
+```
 
-To avoid blocking on one platform while the other is still running, use the async build script:
+### Auth bypass (demo / dev)
 
-- `cd mobile && npm run build:eas:async`
-- `cd mobile && npm run build:eas:async:clear-cache`
+Set `EXPO_PUBLIC_AUTH_BYPASS=true` in `blitz-pay-merchant/.env`.
 
-Optional arguments:
+### Environment variables
 
-- `--profile <profile>` (default: `production`)
-- `--platforms ios,android` (or `ios` / `android`)
-- `--poll-ms <milliseconds>` (default: `30000`)
+| Key | Description |
+|-----|-------------|
+| `EXPO_PUBLIC_KEYCLOAK_URL` | Keycloak server URL |
+| `EXPO_PUBLIC_KEYCLOAK_REALM` | Keycloak realm |
+| `EXPO_PUBLIC_KEYCLOAK_CLIENT_ID` | Keycloak client ID (e.g. `blitzpay-merchant-spa`) |
+| `EXPO_PUBLIC_AUTH_BYPASS` | `true` to skip Keycloak entirely |
+| `EXPO_PUBLIC_API_URL` | Backend API base URL |
 
-The script starts EAS builds with `--no-wait`, captures build IDs, then polls each build until completion. The process exits non-zero if any platform fails.
+See `blitz-pay-merchant/.env.example` for the full list.
 
-### Avoid duplicate EAS builds in CI
+### Screens
 
-The GitHub Actions workflow (`.github/workflows/mobile-react-native-build.yml`) includes a duplicate-build guard before triggering EAS:
+| Tab | Stack / modal screens |
+|-----|-----------------------|
+| Dashboard (revenue, stats, recent orders) | Login |
+| Orders (filterable list, status badges) | OrderDetail (mark complete / cancel) |
+| Products (active toggle, add/edit) | ProductEdit (name, price, SKU, stock) |
+| Account (settings, language, logout) | MerchantQRCode (dynamic QR + share) |
+| | PaymentsHistory |
+| | Notifications |
 
-- It checks active builds with `eas build:list` for the same app version, profile, and platform.
-- If an `in-progress` or `in-queue` build already exists, CI sets `skip_build=true` and does not trigger a new build.
-- For `eas-platform: all`, it checks Android and iOS independently to prevent duplicate jobs per platform.
+> All data is currently mocked. Wire `src/lib/config.ts` → `EXPO_PUBLIC_API_URL` to connect to a real backend.
 
-Release notes in CI: the workflow input `release-notes-tag` defaults to `latest`. During `eas-update`, CI reads that GitHub release and uses it as the EAS update message. Set a specific tag (for example `v1.2.0`) to target a particular release.
+---
 
-CI app versioning: during `eas-build`, the same `release-notes-tag` input (default `latest`) is resolved to a GitHub release tag and mapped to Expo app version (`v1.2.3` -> `1.2.3`). CI writes that value into `mobile/app.json` before EAS build so EAS does not stay on the static `1.0.0`.
+## Clean rebuild (both apps)
 
-### Sync `mobile/.env` to GitHub Actions vars/secrets
+If Metro or Expo ignores recent changes, clear caches and restart:
 
-Use `.github/scripts/sync-mobile-env-to-github.sh` to push mobile env keys to your repository settings:
+```bash
+rm -rf .expo node_modules/.cache
+npx expo start --clear
+```
 
-- `EXPO_PUBLIC_*` keys are stored as GitHub Variables.
-- All other keys are stored as GitHub Secrets.
+To force a full native rebuild:
 
-Prerequisites:
+```bash
+npx expo run:ios
+npx expo run:android
+```
 
-- `gh` CLI installed and authenticated (`gh auth login`).
-- `mobile/.env` present locally.
+---
 
-Run from repo root:
+## EAS builds (blitz-pay)
 
-- `./.github/scripts/sync-mobile-env-to-github.sh`
+### Prerequisites
 
-Optional flags:
+`blitz-pay/eas.json` must exist. Generate it once:
 
-- `--env-file <path>` to use a different env file.
-- `--repo <owner/name>` to target a different repo.
-- `--environment <name>` to write environment-scoped vars/secrets (for example `staging` or `production`).
+```bash
+cd blitz-pay && npx eas build:configure
+```
 
-Example:
+The `preview` profile uses `ios.simulator: true` so CI builds don't require signing credentials. For a real device build, run `npx eas credentials` interactively first.
 
-- `./.github/scripts/sync-mobile-env-to-github.sh --environment staging`
+### Async build script (recommended)
 
-## Environment variables
+```bash
+cd blitz-pay
+npm run build:eas:async                    # default: production profile, all platforms
+npm run build:eas:async:clear-cache        # same but clears EAS cache first
+```
 
-### Web (Vite)
+Optional flags: `--profile <profile>`, `--platforms ios,android`, `--poll-ms <ms>`
 
-The root `.env.example` lists every required key. At a minimum, set the following before running `npm run dev`:
+### GitHub Actions
 
-- `APP_URL`: Public URL used for self-referential links, OAuth callbacks, and the API proxy.
-- `VITE_AUTH_BYPASS`: Set to `true` for dev-only bypass mode that auto-logs a fake user without Keycloak.
-- `VITE_KEYCLOAK_URL`, `VITE_KEYCLOAK_REALM`, `VITE_KEYCLOAK_CLIENT_ID`: Keycloak server, realm, and client for the SPA.
-- `OBS_OTLP_LOGS_ENDPOINT`: OTLP endpoint for logs. For Grafana Cloud OTLP gateway, set this to your `/otlp` URL; the server appends `/v1/logs`.
-- `OBS_OTLP_AUTH_HEADER`, `OBS_OTLP_AUTH_VALUE`: Auth header pair used by the server when forwarding logs to OTLP (`Authorization: Basic <base64(instance_id:token)>` for Grafana Cloud).
-- `OBS_OTLP_SERVICE_NAMESPACE`: Optional service namespace attached as a resource attribute.
+Workflow: `.github/workflows/mobile-react-native-build.yml`
 
-### React Native (Expo)
+- Defaults to `./blitz-pay`. Pass `app-directory: ./blitz-pay-merchant` to build the merchant app.
+- Duplicate-build guard: skips EAS if a build with the same version/profile/platform is already running.
+- `release-notes-tag` (default `latest`): resolves to a GitHub release tag and stamps the Expo app version before EAS build.
 
-Use `mobile/.env.example` as the template. Populate these keys for the mobile experience:
+### Sync env to GitHub Actions
 
-- `EXPO_PUBLIC_KEYCLOAK_URL`, `EXPO_PUBLIC_KEYCLOAK_REALM`, `EXPO_PUBLIC_KEYCLOAK_CLIENT_ID`: Match the same Keycloak deployment used by the web app.
-- `EXPO_PUBLIC_AUTH_BYPASS`: Mirrors `VITE_AUTH_BYPASS` so you can skip Keycloak during development.
-- `EXPO_PUBLIC_API_URL`: Base URL for the backend API the mobile app calls (defaults to `https://api-blitzpay-staging.elegantsoftware.de`).
-- `EXPO_PUBLIC_OBSERVABILITY_ENABLED`: Enables mobile log capture and backend OTLP forwarding.
-- `EXPO_PUBLIC_OBSERVABILITY_ENVIRONMENT`, `EXPO_PUBLIC_OBSERVABILITY_SERVICE_NAME`, `EXPO_PUBLIC_OBSERVABILITY_SERVICE_VERSION`: Resource metadata added to mobile logs.
-- `EXPO_PUBLIC_OBSERVABILITY_INGEST_PATH`: Backend ingestion path (`/api/observability/mobile-logs` by default).
-- `EXPO_PUBLIC_OBSERVABILITY_SAMPLE_RATE`: 0..1 sampling applied before queueing logs on device.
-- `EXPO_PUBLIC_OBSERVABILITY_CAPTURE_CONSOLE`: Whether `console.warn`/`console.error` are captured automatically.
-- `EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY`: Your Stripe publishable key (starts with `pk_`).
+```bash
+./.github/scripts/sync-mobile-env-to-github.sh
+# Options:
+#   --env-file <path>          use a different .env file
+#   --repo <owner/name>        target a different repo
+#   --environment <name>       write environment-scoped vars (e.g. staging)
+```
 
-## Stripe Testing (Mobile)
+`EXPO_PUBLIC_*` keys are stored as GitHub Variables; all others as GitHub Secrets.
 
-1.  **Dependencies**: The Stripe SDK requires native code. You **must** use a real device or a simulator running a development build (`npx expo run:ios` or `android`). It will not work in the standard Expo Go app.
-2.  **Test Cards**:
-    - **Success**: `4242 4242 4242 4242`
-    - **3D Secure (SCA)**: `4000 0027 6000 3184` (use any CVC and future expiry)
-3.  **Card Scanning**: On iOS, tap the scan icon in the card entry field to test camera-based scanning.
-4.  **Deep Linking**: The `blitzpay://` scheme is used to handle 3D Secure redirects back to the app.
+---
 
-## OpenTelemetry Logs to Grafana (Android + iOS)
+## OpenTelemetry / Grafana (blitz-pay)
 
-1. Configure server OTLP vars in root `.env`:
-   - `OBS_OTLP_LOGS_ENDPOINT`
-   - `OBS_OTLP_AUTH_HEADER`
-   - `OBS_OTLP_AUTH_VALUE`
-2. Configure mobile flags in `mobile/.env`:
+1. Set mobile flags in `blitz-pay/.env`:
    - `EXPO_PUBLIC_OBSERVABILITY_ENABLED=true`
-   - `EXPO_PUBLIC_OBSERVABILITY_ENVIRONMENT=production` (or staging/dev)
-3. Start the mobile app (`cd mobile && npm run start`).
-4. Mobile app logs/errors are batched and posted to `POST /api/observability/mobile-logs`, then forwarded as OTLP logs to Grafana.
-5. In Grafana Explore, query logs by labels/resource attrs such as `service.name="blitzpay-mobile"` and `deployment.environment`.
-
-Production recommendation: point `OBS_OTLP_LOGS_ENDPOINT` to Grafana Alloy/OpenTelemetry Collector and let the Collector export to Grafana Cloud over OTLP/protobuf. Direct JSON OTLP forwarding is best suited for lower-volume/test usage.
+   - `EXPO_PUBLIC_OBSERVABILITY_ENVIRONMENT=production`
+2. Logs are batched on-device and posted to `POST /api/observability/mobile-logs` on the backend, then forwarded as OTLP logs.
+3. Query in Grafana Explore by `service.name="blitzpay-mobile"` and `deployment.environment`.
