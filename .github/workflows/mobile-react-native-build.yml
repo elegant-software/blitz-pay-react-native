@@ -6,7 +6,7 @@ on:
       app-directory:
         description: Relative path to the Expo app
         required: false
-        default: ./mobile
+        default: ./blitz-pay
         type: string
       run-eas-build:
         description: Trigger EAS cloud build
@@ -52,7 +52,7 @@ on:
     inputs:
       app-directory:
         required: false
-        default: ./mobile
+        default: ./blitz-pay
         type: string
       run-eas-build:
         required: false
@@ -122,7 +122,7 @@ jobs:
         id: resolve
         run: |
           {
-            echo "app_directory=${{ inputs.app-directory || github.event.inputs.app-directory || './mobile' }}"
+            echo "app_directory=${{ inputs.app-directory || github.event.inputs.app-directory || './blitz-pay' }}"
             echo "node_version=${{ vars.MOBILE_NODE_VERSION || vars.NODE_VERSION || '20' }}"
             echo "run_eas_build=${{ (inputs.run-eas-build || github.event.inputs.run-eas-build == 'true') && 'true' || 'false' }}"
             echo "eas_profile=${{ inputs.eas-profile || github.event.inputs.eas-profile || 'preview' }}"
