@@ -27,6 +27,8 @@ module.exports = {
         backgroundColor: "#000000",
       },
       splash: {
+        image: "./assets/app-icon.png",
+        resizeMode: "contain",
         backgroundColor: "#000000",
       },
       package: "app.blitzpay.merchant",
@@ -48,7 +50,7 @@ module.exports = {
           },
         },
       ],
-      ["expo-splash-screen", { backgroundColor: "#000000" }],
+      ["expo-splash-screen", { backgroundColor: "#000000", image: "./assets/app-icon.png", imageWidth: 200 }],
       ["expo-camera", { cameraPermission: "Allow BlitzPay Merchant to access your camera to scan QR codes." }],
       ["expo-local-authentication", { faceIDPermission: "Allow BlitzPay Merchant to use Face ID for authentication." }],
       "expo-secure-store",
