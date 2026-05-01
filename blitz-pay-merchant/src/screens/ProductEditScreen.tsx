@@ -1,16 +1,62 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import * as Location from 'expo-location';
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet,
-  KeyboardAvoidingView, Platform, Switch,
+  KeyboardAvoidingView, Platform, ActivityIndicator, Image,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { useLanguage } from '../lib/LanguageContext';
+import { observability } from '../lib/observability';
 import { colors, spacing, radius, shadow } from '../lib/theme';
-import type { RootStackParamList } from '../types';
+import {
+  createMerchantProduct,
+  fetchProductDetail,
+  type MerchantScope,
+  MerchantProductError,
+  resolveNearbyMerchantScope,
+  updateMerchantProduct,
+} from '../lib/merchantProducts';
+import type { Product, RootStackParamList } from '../types';
 
 type RouteProps = RouteProp<RootStackParamList, 'ProductEdit'>;
+
+type FormState = {
+  branchId: string;
+  branchName: string;
+  name: string;
+  description: string;
+  price: string;
+  imageUri: string;
+};
+
+async function resolveCurrentCoordinates() {
+  const { status } = await Location.requestForegroundPermissionsAsync();
+  if (status !== Location.PermissionStatus.GRANTED) {
+    throw new MerchantProductError('merchant_location_permission_required', `location_permission_${status}`);
+  }
+
+  const current = await Location.getCurrentPositionAsync({
+    accuracy: Location.Accuracy.Balanced,
+  }).catch(() => null);
+  if (current) {
+    return {
+      latitude: current.coords.latitude,
+      longitude: current.coords.longitude,
+    };
+  }
+
+  const lastKnown = await Location.getLastKnownPositionAsync({});
+  if (lastKnown) {
+    return {
+      latitude: lastKnown.coords.latitude,
+      longitude: lastKnown.coords.longitude,
+    };
+  }
+
+  throw new MerchantProductError('merchant_location_unavailable', 'location_unavailable');
+}
 
 export default function ProductEditScreen() {
   const { t } = useLanguage();
@@ -19,81 +65,201 @@ export default function ProductEditScreen() {
   const insets = useSafeAreaInsets();
   const isEdit = route.params.mode === 'edit';
 
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [price, setPrice] = useState('');
-  const [sku, setSku] = useState('');
-  const [stock, setStock] = useState('');
-  const [active, setActive] = useState(true);
+  const [form, setForm] = useState<FormState>({
+    branchId: '',
+    branchName: '',
+    name: '',
+    description: '',
+    price: '',
+    imageUri: '',
+  });
+  const [merchantScope, setMerchantScope] = useState<MerchantScope | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [errorKey, setErrorKey] = useState<string | null>(null);
 
-  const canSave = name.trim() && price.trim() && !isNaN(Number(price));
+  useEffect(() => {
+    let active = true;
 
-  const handleSave = () => {
-    // TODO: wire to API
-    navigation.goBack();
+    async function load() {
+      setLoading(true);
+      setErrorKey(null);
+
+      try {
+        const coords = await resolveCurrentCoordinates();
+        const activeScope = await resolveNearbyMerchantScope(coords);
+        if (!active) return;
+        setMerchantScope(activeScope);
+
+        if (!isEdit || !route.params.productId) {
+          setForm({
+            branchId: activeScope.branchId,
+            branchName: activeScope.branchName,
+            name: '',
+            description: '',
+            price: '',
+            imageUri: '',
+          });
+          setLoading(false);
+          return;
+        }
+
+        const product = await fetchProductDetail(
+          activeScope.merchantId,
+          activeScope.branchId,
+          route.params.productId,
+        );
+        if (!active) return;
+        hydrateForm(product, activeScope.branchName);
+        setLoading(false);
+      } catch (error) {
+        if (!active) return;
+        observability.warn('merchant_product_branch_resolution_failed', {
+          merchantId: merchantScope?.merchantId ?? null,
+          productId: route.params.productId ?? null,
+          reason: error instanceof Error ? error.message : 'unknown_error',
+        });
+        setMerchantScope(null);
+        setErrorKey(error instanceof MerchantProductError ? error.key : 'merchant_product_load_failed');
+        setLoading(false);
+      }
+    }
+
+    void load();
+    return () => {
+      active = false;
+    };
+  }, [isEdit, route.params.productId]);
+
+  function hydrateForm(product: Product, currentBranchName: string) {
+    setForm({
+      branchId: product.branchId ?? '',
+      branchName: currentBranchName,
+      name: product.name,
+      description: product.description ?? '',
+      price: product.unitPrice.toFixed(2),
+      imageUri: product.imageUrl ?? '',
+    });
+  }
+
+  const canSave = useMemo(() => {
+    if (!form.branchId) return false;
+    if (!form.name.trim()) return false;
+    const parsedPrice = Number(form.price.replace(',', '.'));
+    return Number.isFinite(parsedPrice) && parsedPrice > 0;
+  }, [form.branchId, form.name, form.price]);
+
+  const handleSave = async () => {
+    if (!merchantScope?.merchantId || !canSave) {
+      setErrorKey('merchant_product_validation_failed');
+      return;
+    }
+
+    setSaving(true);
+    setErrorKey(null);
+    try {
+      const input = {
+        branchId: form.branchId,
+        name: form.name.trim(),
+        description: form.description.trim() || undefined,
+        unitPrice: Number(form.price.replace(',', '.')).toFixed(2),
+        imageUri: form.imageUri.trim() || undefined,
+      };
+
+      if (isEdit && route.params.productId) {
+        await updateMerchantProduct(merchantScope.merchantId, route.params.productId, input);
+      } else {
+        await createMerchantProduct(merchantScope.merchantId, input);
+      }
+      navigation.goBack();
+    } catch (error) {
+      setErrorKey(error instanceof MerchantProductError ? error.key : 'merchant_product_save_failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleChange = <K extends keyof FormState>(key: K, value: FormState[K]) => {
+    setForm((current) => ({ ...current, [key]: value }));
+    if (errorKey) setErrorKey(null);
   };
 
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, backgroundColor: colors.surface }}>
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.container}>
       <View style={{ paddingTop: insets.top }}>
-        {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
             <Ionicons name="close" size={22} color={colors.onSurface} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>{isEdit ? t('edit_product') : t('add_product')}</Text>
           <TouchableOpacity
-            style={[styles.saveBtn, !canSave && styles.saveBtnDisabled]}
+            style={[styles.saveBtn, (!canSave || saving) && styles.saveBtnDisabled]}
             onPress={handleSave}
-            disabled={!canSave}
+            disabled={!canSave || saving}
           >
-            <Text style={styles.saveBtnText}>{t('save')}</Text>
+            {saving ? <ActivityIndicator size="small" color={colors.black} /> : <Text style={styles.saveBtnText}>{t('save')}</Text>}
           </TouchableOpacity>
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + spacing.xl }]} keyboardShouldPersistTaps="handled">
-        <View style={[styles.card, shadow.sm]}>
-          <Field label={t('product_name')} required>
-            <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="e.g. Espresso" placeholderTextColor={colors.gray400} />
-          </Field>
-          <Field label={t('product_description')}>
-            <TextInput
-              style={[styles.input, styles.textarea]}
-              value={description} onChangeText={setDescription}
-              placeholder="Short description..." placeholderTextColor={colors.gray400}
-              multiline numberOfLines={3}
-            />
-          </Field>
-          <Field label={`${t('product_price')} (EUR)`} required>
-            <TextInput
-              style={styles.input} value={price} onChangeText={setPrice}
-              placeholder="0.00" placeholderTextColor={colors.gray400}
-              keyboardType="decimal-pad"
-            />
-          </Field>
+      {loading ? (
+        <View style={styles.stateCard}>
+          <ActivityIndicator color={colors.primary} />
+          <Text style={styles.stateText}>{t('merchant_product_loading')}</Text>
         </View>
-
-        <View style={[styles.card, shadow.sm]}>
-          <Field label={t('product_sku')}>
-            <TextInput style={styles.input} value={sku} onChangeText={setSku} placeholder="SKU-001" placeholderTextColor={colors.gray400} autoCapitalize="characters" />
-          </Field>
-          <Field label={t('product_stock')}>
-            <TextInput style={styles.input} value={stock} onChangeText={setStock} placeholder="Unlimited" placeholderTextColor={colors.gray400} keyboardType="number-pad" />
-          </Field>
-          <View style={styles.switchRow}>
-            <Text style={styles.switchLabel}>{t('product_active')}</Text>
-            <Switch value={active} onValueChange={setActive} trackColor={{ false: colors.gray300, true: colors.primary }} thumbColor={colors.white} />
+      ) : (
+        <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + spacing.xl }]} keyboardShouldPersistTaps="handled">
+          <View style={[styles.card, shadow.sm]}>
+            <Text style={styles.scopeLabel}>{t('merchant_branch_scope')}</Text>
+            <Text style={styles.scopeValue}>{form.branchName || '—'}</Text>
           </View>
-        </View>
 
-        {isEdit && (
-          <TouchableOpacity style={styles.deleteBtn} activeOpacity={0.85}>
-            <Ionicons name="trash-outline" size={18} color={colors.error} />
-            <Text style={styles.deleteBtnText}>{t('delete')}</Text>
-          </TouchableOpacity>
-        )}
-      </ScrollView>
+          <View style={[styles.card, shadow.sm]}>
+            <Field label={t('product_name')} required>
+              <TextInput style={styles.input} value={form.name} onChangeText={(value) => handleChange('name', value)} placeholder="Espresso" placeholderTextColor={colors.gray400} />
+            </Field>
+            <Field label={t('product_description')}>
+              <TextInput
+                style={[styles.input, styles.textarea]}
+                value={form.description}
+                onChangeText={(value) => handleChange('description', value)}
+                placeholder={t('product_description')}
+                placeholderTextColor={colors.gray400}
+                multiline
+                numberOfLines={4}
+              />
+            </Field>
+            <Field label={`${t('product_price')} (EUR)`} required>
+              <TextInput
+                style={styles.input}
+                value={form.price}
+                onChangeText={(value) => handleChange('price', value)}
+                placeholder="0.00"
+                placeholderTextColor={colors.gray400}
+                keyboardType="decimal-pad"
+              />
+            </Field>
+            <Field label={t('merchant_product_image_uri')}>
+              <TextInput
+                style={styles.input}
+                value={form.imageUri}
+                onChangeText={(value) => handleChange('imageUri', value)}
+                placeholder="https://…"
+                placeholderTextColor={colors.gray400}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </Field>
+            <Text style={styles.helperText}>{t('merchant_product_image_help')}</Text>
+
+            {form.imageUri ? (
+              <Image source={{ uri: form.imageUri }} style={styles.previewImage} resizeMode="cover" />
+            ) : null}
+
+            {errorKey ? <Text style={styles.errorText}>{t(errorKey as Parameters<typeof t>[0])}</Text> : null}
+          </View>
+        </ScrollView>
+      )}
     </KeyboardAvoidingView>
   );
 }
@@ -113,6 +279,7 @@ const fieldStyles = StyleSheet.create({
 });
 
 const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.surface },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
@@ -121,16 +288,29 @@ const styles = StyleSheet.create({
   backBtn: { width: 40, height: 40, justifyContent: 'center' },
   headerTitle: { fontSize: 17, fontWeight: '700', color: colors.onSurface },
   saveBtn: {
+    minWidth: 72,
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: colors.primary, borderRadius: radius.full,
     paddingHorizontal: spacing.md, paddingVertical: 6,
   },
   saveBtnDisabled: { opacity: 0.4 },
   saveBtnText: { fontSize: 14, fontWeight: '700', color: colors.black },
+  stateCard: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    padding: spacing.xl,
+  },
+  stateText: { fontSize: 14, color: colors.onSurface, textAlign: 'center' },
   scroll: { padding: spacing.md },
   card: {
     backgroundColor: colors.white, borderRadius: radius.xl,
     padding: spacing.lg, marginBottom: spacing.md,
   },
+  scopeLabel: { fontSize: 12, fontWeight: '700', color: colors.gray600, textTransform: 'uppercase' },
+  scopeValue: { marginTop: 6, fontSize: 16, fontWeight: '700', color: colors.onSurface },
   input: {
     backgroundColor: colors.surface, borderRadius: radius.lg,
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
@@ -138,13 +318,7 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: colors.gray200,
   },
   textarea: { minHeight: 80, textAlignVertical: 'top' },
-  switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: spacing.sm },
-  switchLabel: { fontSize: 15, color: colors.onSurface, fontWeight: '500' },
-  deleteBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    borderWidth: 1.5, borderColor: `${colors.error}40`,
-    borderRadius: radius.xl, padding: spacing.md,
-    backgroundColor: `${colors.error}08`,
-  },
-  deleteBtnText: { fontSize: 15, fontWeight: '600', color: colors.error },
+  helperText: { fontSize: 12, color: colors.gray500, marginTop: -spacing.xs, marginBottom: spacing.sm },
+  previewImage: { width: '100%', height: 180, borderRadius: radius.lg, backgroundColor: colors.surface },
+  errorText: { marginTop: spacing.md, fontSize: 12, color: colors.error },
 });
