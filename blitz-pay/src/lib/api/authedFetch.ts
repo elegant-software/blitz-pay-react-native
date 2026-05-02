@@ -1,5 +1,6 @@
 import { storage } from '../storage';
 import { config } from '../config';
+import { observability } from '../observability';
 
 const SESSION_KEY = 'blitzpay_session';
 
@@ -72,15 +73,31 @@ export interface AuthedFetchInit extends RequestInit {
 export async function authedFetch(path: string, init: AuthedFetchInit = {}): Promise<Response> {
   const { baseUrl = config.apiUrl, headers, ...rest } = init;
   const url = joinUrl(baseUrl, path);
+  const shouldDebugOrders = path.startsWith('/v1/orders');
+  const session = await readSession();
 
   const doFetch = async (token: string | null): Promise<Response> => {
     const mergedHeaders = new Headers(headers as HeadersInit | undefined);
     if (token) mergedHeaders.set('Authorization', `Bearer ${token}`);
     if (!mergedHeaders.has('Accept')) mergedHeaders.set('Accept', 'application/json');
+    if (shouldDebugOrders) {
+      const authorizationHeader = mergedHeaders.get('Authorization');
+      observability.info('authed_fetch_debug', {
+        path,
+        url,
+        method: (rest.method ?? 'GET').toUpperCase(),
+        hasSession: Boolean(session),
+        hasAccessToken: Boolean(session?.accessToken),
+        hasRefreshToken: Boolean(session?.refreshToken),
+        authAttached: Boolean(authorizationHeader),
+        authorizationScheme: authorizationHeader?.split(' ')[0] ?? null,
+        accept: mergedHeaders.get('Accept') ?? null,
+        hasContentType: mergedHeaders.has('Content-Type'),
+      });
+    }
     return fetch(url, { ...rest, headers: mergedHeaders });
   };
 
-  const session = await readSession();
   let response = await doFetch(session?.accessToken ?? null);
 
   if (response.status === 401 && session?.refreshToken) {

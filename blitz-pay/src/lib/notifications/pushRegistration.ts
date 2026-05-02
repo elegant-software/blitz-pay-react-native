@@ -89,9 +89,9 @@ export async function getExpoPushToken(): Promise<string | null> {
   return tokenInFlight;
 }
 
-export async function registerDeviceForPayment(paymentRequestId: string): Promise<boolean> {
+export async function registerDeviceForPayment(orderId: string): Promise<boolean> {
   observability.info('device_registration_started', {
-    paymentRequestId,
+    orderId,
     platform: Platform.OS,
     isPhysicalDevice: Device.isDevice,
   });
@@ -99,7 +99,7 @@ export async function registerDeviceForPayment(paymentRequestId: string): Promis
   const token = await getExpoPushToken();
   if (!token) {
     observability.warn('device_registration_skipped_no_token', {
-      paymentRequestId,
+      orderId,
       platform: Platform.OS,
       isPhysicalDevice: Device.isDevice,
       authBypass: config.authBypass,
@@ -108,7 +108,7 @@ export async function registerDeviceForPayment(paymentRequestId: string): Promis
   }
 
   const body = JSON.stringify({
-    paymentRequestId,
+    orderId,
     expoPushToken: token,
     platform: backendPlatform(),
   });
@@ -122,7 +122,7 @@ export async function registerDeviceForPayment(paymentRequestId: string): Promis
       });
       if (res.ok) {
         observability.info('device_registered_for_payment', {
-          paymentRequestId,
+          orderId,
           status: res.status,
           attempt,
         });
@@ -134,14 +134,14 @@ export async function registerDeviceForPayment(paymentRequestId: string): Promis
         .catch(() => '');
       if (res.status === 404) {
         observability.warn('device_registration_payment_not_found', {
-          paymentRequestId,
+          orderId,
           body: bodySnippet,
         });
         return false;
       }
       if (res.status === 400 || res.status === 401) {
         observability.error('device_registration_rejected', {
-          paymentRequestId,
+          orderId,
           status: res.status,
           attempt,
           body: bodySnippet,
@@ -149,14 +149,14 @@ export async function registerDeviceForPayment(paymentRequestId: string): Promis
         return false;
       }
       observability.warn('device_registration_non_ok', {
-        paymentRequestId,
+        orderId,
         status: res.status,
         attempt,
         body: bodySnippet,
       });
     } catch (err) {
       observability.warn('device_registration_network_error', {
-        paymentRequestId,
+        orderId,
         attempt,
         message: err instanceof Error ? err.message : String(err),
       });
@@ -164,7 +164,7 @@ export async function registerDeviceForPayment(paymentRequestId: string): Promis
     await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
   }
   observability.error('device_registration_exhausted', {
-    paymentRequestId,
+    orderId,
   });
   return false;
 }
